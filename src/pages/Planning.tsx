@@ -31,6 +31,12 @@ const Planning = () => {
   const [viewMode, setViewMode] = useState<"table" | "cards">("table");
   const { setAllHidden } = useLayout();
 
+  const [editData, setEditData] = useState<{
+    formData: any;
+    products: any[];
+    planningNo: string;
+  } | null>(null);
+
   const [selectedPlanningData, setSelectedPlanningData] = useState<Row[]>([]);
   const [showPlanningModal, setShowPlanningModal] = useState(false);
 
@@ -52,6 +58,7 @@ const Planning = () => {
     remarks: string;
     state: string;
     department: string;
+    vendorId: string;
   };
 
   const [rows, setRows] = useState<Row[]>([]);
@@ -62,36 +69,77 @@ const Planning = () => {
   setError(null);
 
   try {
-
     const { data, error } = await supabase
-      .from("indent")
-      .select("*")
+      .from("planning_master")
+      .select(`*, planning_item_master (*)`)
       .order("id", { ascending: false });
 
     if (error) throw error;
 
-    const transformedData = (data || []).map((r: any) => ({
-      planningNo: r.planning_number,
-      serialNo: String(r.serial_no),
-      date: r.date,
-      requesterName: r.requester_name,
-      projectName: r.project_name,
-      firmName: r.firm_name,
-      vendorName: r.vendor_name,
-      itemType: r.item_type,
-      packingDetail: r.packing_detail,
-      itemName: r.item_name,
-      uom: r.uom,
-      qty: String(r.qty),
-      qtySet: String(r.qty_per_set),
-      totalQty: String(r.total_qty),
-      remarks: r.remarks,
-      state: r.state,
-      department: r.department,
-    }));
+    const transformedData: any[] = [];
+    if (data) {
+      data.forEach((master: any) => {
+        const items = master.planning_item_master || [];
+        if (items.length === 0) {
+          transformedData.push({
+            planningNo: master.planning_no,
+            serialNo: "-",
+            date: master.date,
+            requesterName: master.requester_name,
+            projectName: master.project,
+            firmName: master.firm,
+            vendorName: master.vendor_name,
+            itemType: master.item_type,
+            packingDetail: "-",
+            itemName: "-",
+            uom: "-",
+            qty: "0",
+            qtySet: "1",
+            totalQty: "0",
+            remarks: "-",
+            state: master.state,
+            department: master.department,
+            vendorId: master.vendor_id,
+          });
+        } else {
+          items.forEach((item: any, idx: number) => {
+            let remarks = item.description || "";
+            let uomMatch = item.uom || "";
+            if (!uomMatch) {
+              const uomRegex = /\(UOM:\s*(.*?)\)/;
+              const match = remarks.match(uomRegex);
+              if (match) {
+                uomMatch = match[1];
+                remarks = remarks.replace(uomRegex, "").trim();
+              }
+            }
+
+            transformedData.push({
+              planningNo: master.planning_no,
+              serialNo: String(idx + 1),
+              date: master.date,
+              requesterName: master.requester_name,
+              projectName: master.project,
+              firmName: master.firm,
+              vendorName: master.vendor_name,
+              itemType: master.item_type,
+              packingDetail: "-",
+              itemName: item.item,
+              uom: uomMatch || "-",
+              qty: String(item.qty),
+              qtySet: "1",
+              totalQty: String(item.qty),
+              remarks: remarks,
+              state: master.state,
+              department: master.department,
+              vendorId: master.vendor_id,
+            });
+          });
+        }
+      });
+    }
 
     setRows(transformedData);
-
   } catch (e: any) {
     setError(e.message || "Failed to load planning data");
   } finally {
@@ -109,47 +157,89 @@ const handleView = (planningNo: string) => {
 const handleEdit = async (planningNo: string) => {
   try {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("indent")
+    
+    const { data: mData, error: mError } = await supabase
+      .from("planning_master")
       .select("*")
-      .eq("planning_number", planningNo)
-      .order("serial_no", { ascending: true });
+      .eq("planning_no", planningNo);
+    if (mError) throw mError;
 
-    if (error) throw error;
+    const { data: iData, error: iError } = await supabase
+      .from("planning_item_master")
+      .select("*")
+      .eq("planning_no", planningNo)
+      .order("id", { ascending: true });
+    if (iError) throw iError;
 
-    if (data && data.length > 0) {
-      // Transform data to match the form structure
+    if (mData && mData.length > 0) {
+      const master = mData[0];
+      const items = iData || [];
+      
       const formData = {
-        date: data[0].date || new Date().toISOString().split('T')[0],
-        requesterName: data[0].requester_name || "",
-        projectName: data[0].project_name || "",
-        firmName: data[0].firm_name || "",
-        vendorName: data[0].vendor_name || "",
-        itemType: data[0].item_type || "",
-        state: data[0].state || "",
-        department: data[0].department || "",
-        packingDetailSelect: data[0].packing_detail || "",
+        date: master.date || new Date().toISOString().split('T')[0],
+        requesterName: master.requester_name || "",
+        projectName: master.project || "",
+        firmName: master.firm || "",
+        vendorName: master.vendor_name || "",
+        itemType: master.item_type || "",
+        state: master.state || "",
+        department: master.department || "",
+        vendorId: master.vendor_id || "",
+        packingDetailSelect: "",
         masterQuantity: "",
       };
 
-      // Transform products
-      const products = data.map((item: any) => ({
-        id: `edit-${item.id}-${Date.now()}`,
-        packingDetail: item.packing_detail || "",
-        itemName: item.item_name || "",
-        uom: item.uom || "",
-        qty: Number(item.qty) || 0,
-        qtySet: Number(item.qty_per_set) || 1,
-        totalQty: Number(item.total_qty) || 0,
-        remarks: item.remarks || "",
+      const products = items.map((item: any) => {
+        let remarks = item.description || "";
+        let uomMatch = item.uom || "";
+        if (!uomMatch) {
+          const uomRegex = /\(UOM:\s*(.*?)\)/;
+          const match = remarks.match(uomRegex);
+          if (match) {
+            uomMatch = match[1];
+            remarks = remarks.replace(uomRegex, "").trim();
+          }
+        }
+        
+        return {
+          id: `edit-${item.id}-${Date.now()}`,
+          packingDetail: "",
+          itemName: item.item || "",
+          uom: uomMatch || "",
+          qty: Number(item.qty) || 0,
+          qtySet: 1,
+          totalQty: Number(item.qty) || 0,
+          remarks: remarks,
+        };
+      });
+
+      // Construct flat rows again exactly like before for `selectedPlanningData` if needed
+      const flatRows = items.map((item: any, idx: number) => ({
+        planningNo: master.planning_no,
+        serialNo: String(idx + 1),
+        date: master.date,
+        requesterName: master.requester_name,
+        projectName: master.project,
+        firmName: master.firm,
+        vendorName: master.vendor_name,
+        itemType: master.item_type,
+        packingDetail: "-",
+        itemName: item.item,
+        uom: "-",
+        qty: String(item.qty),
+        qtySet: "1",
+        totalQty: String(item.qty),
+        remarks: item.description,
+        state: master.state,
+        department: master.department,
       }));
 
-      // Set the form data and open the form in edit mode
-      setSelectedPlanningData(data);
+      setEditData({
+        formData,
+        products,
+        planningNo: master.planning_no,
+      });
       setShowForm(true);
-      
-      // You'll need to pass this data to PlanningForm
-      // We'll modify PlanningForm to accept edit data
     }
   } catch (error) {
     console.error("Error loading planning for edit:", error);
@@ -167,12 +257,20 @@ const handleDelete = async (planningNo: string) => {
 
   try {
     setLoading(true);
-    const { error } = await supabase
-      .from("indent")
+    
+    // First delete items
+    const { error: itemsError } = await supabase
+      .from("planning_item_master")
       .delete()
-      .eq("planning_number", planningNo);
+      .eq("planning_no", planningNo);
+    if (itemsError) throw itemsError;
 
-    if (error) throw error;
+    // Then delete master
+    const { error: masterError } = await supabase
+      .from("planning_master")
+      .delete()
+      .eq("planning_no", planningNo);
+    if (masterError) throw masterError;
 
     // Refresh the data
     await loadRows();
@@ -431,6 +529,7 @@ const handleDelete = async (planningNo: string) => {
                         "Project",
                         "Firm",
                         "Vendor",
+                        "Vendor ID",
                         "Item Type",
                         // "Packing Detail",
                         "Item Name",
@@ -492,6 +591,9 @@ const handleDelete = async (planningNo: string) => {
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap">
                           {row.vendorName || "-"}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap">
+                          {row.vendorId || "-"}
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap">
                           <span className="inline-flex gap-1 items-center px-2 py-1 text-xs font-medium text-blue-800 bg-blue-100 rounded-full border border-blue-200">
@@ -718,6 +820,7 @@ const handleDelete = async (planningNo: string) => {
                             "Project",
                             "Firm",
                             "Vendor",
+                            "Vendor ID",
                             "Item Type",
                             // "Packing Detail",
                             "Item Name",
@@ -759,6 +862,9 @@ const handleDelete = async (planningNo: string) => {
                             </td>
                             <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap">
                               {row.firmName || "-"}
+                            </td>
+                            <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap">
+                              {row.vendorId || "-"}
                             </td>
                             <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap">
                               {row.vendorName || "-"}
@@ -859,12 +965,15 @@ const handleDelete = async (planningNo: string) => {
         {showForm && (
           <PlanningForm
             isOpen={showForm}
+            initialData={editData || undefined}
             onClose={() => {
               setShowForm(false);
+              setEditData(null);
             }}
             onSuccess={() => {
               loadRows(true); // Force refresh with true parameter
               setShowForm(false);
+              setEditData(null);
             }}
           />
         )}

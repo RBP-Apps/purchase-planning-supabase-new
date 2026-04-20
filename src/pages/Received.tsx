@@ -8,9 +8,10 @@ import { supabase } from "../lib/supabase";
 interface POItem {
   "Planning No": string;
   "PO No": string;
-  "Serial Number": string;
+  "Receipt ID": string;
   Date: string;
   "Vendor Name": string;
+  "Vendor ID": string;
   "Item Name": string;
   Qty: number;
   "PO Copy": string;
@@ -23,6 +24,7 @@ interface POItem {
   "Total Amount": number;
   "PO Qty": number;
   "Received Qty": number;
+  "Remaining Qty": number;
   Rate: number;
   status: string;
   Remarks: string;
@@ -96,20 +98,16 @@ const POList = () => {
 
     // Validate numeric fields are positive numbers
     const numericFields = [
-      "Gross Amount",
-      "PO Amount",
-      "Tax Amount",
-      "Total Amount",
-      "PO Qty",
+      "Qty",
       "Received Qty",
-      "Rate",
-      "TransportCharge", // ADD THIS
+      "Rate"
     ];
     numericFields.forEach((field) => {
       const value = formData[field as keyof POItem];
+      // Only validate as positive number if the value is provided/exists.
+      // Received Qty might be 0, which is fine, but checking for null/undefined if it's a required field.
       if (
-        value === null ||
-        value === undefined ||
+        value !== undefined && value !== null && value !== "" &&
         (typeof value === "number" && value < 0)
       ) {
         errors[field] = "Must be a positive number";
@@ -119,50 +117,47 @@ const POList = () => {
     return errors;
   };
 
-const fetchHistoryData = async () => {
-  try {
-    setHistoryLoading(true);
+  const fetchHistoryData = async () => {
+    try {
+      setHistoryLoading(true);
 
-    const { data, error } = await supabase
-      .from("po")
-      .select("*")
-      .not("bill_type", "is", null);
+      const { data, error } = await supabase
+        .from("receipt_item_master")
+        .select("*")
+        .not("bill_type", "is", null);
 
-    if (error) throw error;
+      if (error) throw error;
 
-    const transformedData = data.map((row) => ({
-      "Planning No": row.planning_no,
-      "Bill No": row.ref_no,
-      "Bill Date": row.actual_payment,
-      "Bill Amount": row.amount,
-      "PO No": row.po_no,
-      "Firm Name": row.firm_name,
-      "Vendor Name": row.vendor_name,
-    }));
+      const transformedData = data.map((row) => ({
+        "Planning No": row.planning_no,
+        "Bill No": row.ref_no,
+        "Bill Date": row.actual_payment,
+        "Bill Amount": row.amount,
+        "PO No": row.po_no,
+        "Firm Name": row.firm_name,
+        "Vendor Name": row.vendor_name,
+      }));
 
-    setHistoryData(transformedData);
-  } catch (err) {
-    console.error(err);
-  } finally {
-    setHistoryLoading(false);
-  }
-};
+      setHistoryData(transformedData);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // console.log("Ram 1")
-
     if (!selectedGroup || groupItems.length === 0) return;
 
-    // Filter items tracking changes
-    const itemsToSubmit = groupItems.filter(item => item._isDirty);
+    // Filter items tracking changes. Only submit items that have something being received.
+    const itemsToSubmit = groupItems.filter(item => (Number(item["Received Qty"]) || 0) > 0);
 
     if (itemsToSubmit.length === 0) {
-      alert("No changes detected to save.");
+      alert("Please enter a Received Qty greater than 0 for at least one item to save the receipt.");
       return;
     }
-    // console.log("Ram 2")
 
     // Validate all items in the group
     let hasErrors = false;
@@ -172,55 +167,40 @@ const fetchHistoryData = async () => {
       const errors = validateForm(item);
       if (Object.keys(errors).length > 0) {
         hasErrors = true;
-        // Add item index to error keys for identification
         Object.entries(errors).forEach(([key, value]) => {
           allErrors[`${key}-${index}`] = value;
         });
       }
     });
 
+    setFormErrors(allErrors);
+    if (hasErrors) {
+      alert("Validation failed. Please check the form errors.");
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
       let billImageUrl = "";
 
-      // Upload file to Google Drive if bill status is Yes and file exists
+      // Upload file to Supabase Storage if bill image exists
       if (billImage instanceof File) {
         try {
-          // Convert file to base64
-          const base64Data = await new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result as string);
-            reader.readAsDataURL(billImage);
-          });
+          const filePath = `receipts/${Date.now()}_${billImage.name}`;
 
-          const params = new URLSearchParams();
-          params.append("action", "uploadFile");
-          params.append("base64Data", base64Data);
-          params.append("fileName", billImage.name);
-          params.append("mimeType", billImage.type);
-          params.append("folderId", "1k-242_owD34uWm1IQ3WoqzfD_6SFJrXm"); // Replace with actual folder ID
+          const { error: uploadError } = await supabase.storage
+            .from("po_generator")
+            .upload(filePath, billImage);
 
-          const uploadResponse = await fetch(SCRIPT_URL, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/x-www-form-urlencoded",
-            },
-            body: params.toString(),
-          });
+          if (uploadError) throw uploadError;
 
-          if (uploadResponse.ok) {
-            const uploadResult = await uploadResponse.json();
-            // console.log("uploadResult", uploadResult);
-            billImageUrl = uploadResult.fileUrl || "";
-            // console.log("File uploaded successfully, URL:", billImageUrl);
-          } else {
-            const errorText = await uploadResponse.text();
-            // console.error("Upload response error:", errorText);
-            throw new Error(`Failed to upload file: ${uploadResponse.status}`);
-          }
+          const { data: publicUrlData } = supabase.storage
+            .from("po_generator")
+            .getPublicUrl(filePath);
+
+          billImageUrl = publicUrlData.publicUrl;
         } catch (uploadError) {
-          // console.error("File upload error:", uploadError);
           throw new Error(
             `File upload failed: ${uploadError instanceof Error
               ? uploadError.message
@@ -230,48 +210,107 @@ const fetchHistoryData = async () => {
         }
       }
 
-      // Calculate the grand total from the current items
-      const calculatedGrandTotal = groupItems.reduce((total, item) => {
-        return total + parseFloat(calculateTotalAmount(item));
-      }, 0);
+      // Use the first item to get the PO-level fields
+      const firstItem = itemsToSubmit[0];
 
-      // Submit only dirty items
- const submissionPromises = itemsToSubmit.map(async (item) => {
-  const { error } = await supabase
-    .from("po")
-    .update({
-      receiving_qty: item["Received Qty"],
-      bill_type: billStatus,
-      amount: calculateTotalAmount(item),
-      remarks: item.Remarks,
-    })
-    .eq("planning_no", item["Planning No"])
-    .eq("serial_no", item["Serial Number"]);
+      // Auto-generate receipt_id in format REC-001
+      let receiptId = "REC-001";
+      const { data: recentReceipts, error: lastRefError } = await supabase
+        .from("receipt_master")
+        .select("receipt_id")
+        .order("created_at", { ascending: false })
+        .limit(100);
 
-  if (error) throw error;
-});
+      if (!lastRefError && recentReceipts && recentReceipts.length > 0) {
+        // Filter for IDs that match REC-XXX pattern (where XXX is not a very long timestamp)
+        const validIds = recentReceipts
+          .map(r => {
+            const match = r.receipt_id.match(/REC-(\d+)/);
+            return match ? parseInt(match[1], 10) : null;
+          })
+          .filter(num => num !== null && num < 1000000); // Ignore timestamps (which are > 10^12)
 
-      // Wait for all submissions to complete
-      const results = await Promise.all(submissionPromises);
-      // Show success message
-      alert(`${itemsToSubmit.length} items saved successfully!`);
+        if (validIds.length > 0) {
+          const maxId = Math.max(...validIds);
+          receiptId = `REC-${(maxId + 1).toString().padStart(3, "0")}`;
+        }
+      }
 
-      // Close the modal
+      const today = new Date().toISOString().split("T")[0];
+
+      // 1. Insert into receipt_master
+      const { error: receiptError } = await supabase
+        .from("receipt_master")
+        .insert([{
+          receipt_id: receiptId,
+          receipt_date: today,
+          po_id: firstItem["PO No"] || null,
+          planning_no: firstItem["Planning No"] || null,
+          vendor_name: firstItem["Vendor Name"] || null,
+          invoice_no: billNo || null,
+          invoice_date: billDate || null,
+          transport_name: transporterName || null,
+          lr_no: lrNo || null,
+          lr_date: null,
+          invoice_copy: billImageUrl || null,
+          total_invoice_amount: parseFloat(billAmount) || null,
+        }]);
+
+      if (receiptError) throw receiptError;
+
+      // 2. Insert itemized records into receipt_item_master
+      const itemReceipts = groupItems
+        .filter(item => (Number(item["Received Qty"]) || 0) > 0)
+        .map(item => {
+          const receivedQty = Number(item["Received Qty"]) || 0;
+          const poQty = Number(item["Qty"]) || 0;
+          const rate = Number(item["Rate"]) || 0;
+          const gstPercent = Number(item["GST %"]) || 0;
+          const discountPercent = Number(item["Discount"]) || 0;
+          const baseAmount = receivedQty * rate;
+          const discountAmount = baseAmount * (discountPercent / 100);
+          const gstAmount = baseAmount * (gstPercent / 100);
+          const netAmount = (baseAmount - discountAmount) + gstAmount;
+          const remainingQty = Math.max(0, poQty - receivedQty);
+          return {
+            receipt_id: receiptId,
+            planning_no: item["Planning No"] || firstItem["Planning No"],
+            item: item["Item Name"] || "-",
+            qty_received: receivedQty,
+            rate: rate || null,
+            gst_percent: gstPercent || null,
+            discount_percent: discountPercent || null,
+            net_amount: netAmount || null,
+            remaining_qty: remainingQty,
+            received_status: "Pending"
+          };
+        });
+
+      if (itemReceipts.length > 0) {
+        const { error: itemInsertError } = await supabase
+          .from("receipt_item_master")
+          .insert(itemReceipts);
+
+        if (itemInsertError) throw itemInsertError;
+      }
+
+      // 3. Update purchase_order_master status (optional)
+      // Removed the update to qty_received as it does not exist in this table.
+      // The dashboard now calculates the total received from receipt_item_master.
+
+      alert(`Receipt saved successfully!`);
       setShowModal(false);
-
-      fetchData(true);
+      fetchData(); // Refresh data to show updated totals
     } catch (error) {
-      console.error("Error saving data to Google Sheets:", error);
-
+      console.error("Error saving receipt data:", error);
       setFormErrors({
         submit:
           error instanceof Error
             ? error.message
-            : "Failed to save changes. Please check the console for details and try again.",
+            : "Failed to save changes. Please try again.",
       });
     } finally {
       setIsSubmitting(false);
-      // console.log("[Received] Set isSubmitting to false");
     }
   };
 
@@ -289,11 +328,34 @@ const fetchHistoryData = async () => {
         const numericValue =
           isNumericField && value !== "" ? Number(value) || null : value;
 
-        updatedItems[itemIndex] = {
-          ...updatedItems[itemIndex],
-          [field]: numericValue,
-          _isDirty: true, // Mark as dirty on change
-        };
+        // Validation: Received Qty cannot exceed available balance (shown in Qty)
+        if (field === "Received Qty") {
+          const maxAllowed = Number(updatedItems[itemIndex]["Qty"]) || 0;
+          if (Number(value) > maxAllowed) {
+            setFormErrors(prev => ({
+              ...prev,
+              [`${field}-${itemIndex}`]: `Cannot exceed remaining qty (${maxAllowed})`
+            }));
+            // Cap the value at maxAllowed
+            updatedItems[itemIndex] = {
+              ...updatedItems[itemIndex],
+              [field]: maxAllowed,
+              _isDirty: true,
+            };
+          } else {
+            updatedItems[itemIndex] = {
+              ...updatedItems[itemIndex],
+              [field]: numericValue,
+              _isDirty: true,
+            };
+          }
+        } else {
+          updatedItems[itemIndex] = {
+            ...updatedItems[itemIndex],
+            [field]: numericValue,
+            _isDirty: true,
+          };
+        }
       }
       return updatedItems;
     });
@@ -314,7 +376,8 @@ const fetchHistoryData = async () => {
     setGroupItems(
       group.items.map((item) => ({
         ...item,
-        "Received Qty": item["Received Qty"] || 0,
+        "Qty": item["Remaining Qty"], // Show remaining balance in PO Qty column
+        "Received Qty": 0, // Reset input for new receipt
         _isDirty: false, // Initialize as clean
       }))
     );
@@ -333,53 +396,236 @@ const fetchHistoryData = async () => {
     setShowModal(true);
   };
 
+  const handleDirectApproveItem = async (item: POItem) => {
+    if (!window.confirm(`Are you sure you want to mark "${item["Item Name"]}" as complete? This will remove it from the pending list.`)) {
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      const { error: updateError } = await supabase
+        .from("receipt_item_master")
+        .update({ received_status: "Approved" })
+        .eq("planning_no", item["Planning No"])
+        .eq("item", item["Item Name"]);
+
+      if (updateError) throw updateError;
+
+      alert("Item marked as complete.");
+      
+      // Update local state to remove the item instantly from the modal
+      setGroupItems(prev => {
+        const remainingItems = prev.filter(i => i["Item Name"] !== item["Item Name"]);
+        if (remainingItems.length === 0) {
+          setShowModal(false); // Close modal if no items left
+        }
+        return remainingItems;
+      });
+      
+      // Refresh the main table data
+      fetchData();
+    } catch (err) {
+      console.error("Error approving item:", err);
+      alert("Failed to mark item as complete.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
 
   const fetchData = async () => {
-  try {
-    setLoading(true);
-    setError(null);
+    try {
+      setLoading(true);
+      setError(null);
 
-    const { data: poData, error } = await supabase
-      .from("po")
-      .select("*");
+      // 1. Fetch purchase order master records (status = "Approved" lives here)
+      const { data: poData, error } = await supabase
+        .from("purchase_order_master")
+        .select("*")
+        .eq("status", "Approved");
 
-    if (error) throw error;
+      if (error) throw error;
 
-    const transformedData = poData.map((row) => ({
-      "Planning No": row.planning_no,
-      "PO No": row.po_no,
-      "Serial Number": row.serial_no,
-      Date: row.po_date,
-      "Vendor Name": row.vendor_name,
-      "Item Name": row.item_name,
-      Qty: row.qty,
-      Rate: row.rate,
-      "GST %": row.gst_percent,
-      Discount: row.discount,
-      "Grand Total Amount": row.grand_total,
-      "PO Copy": row.po_copy,
-      "Project Name": row.project,
-      "Firm Name": row.firm_name,
-      poStatus: row.status,
-      "Received Qty": row.receiving_qty,
-      Planned: row.planned,
-      Actual: row.actual,
-      Status: row.receiving_status,
-      Remarks: row.remarks
-    }));
+      const masterData = poData || [];
 
-    const approvedData = transformedData.filter(
-      (item) => item.Status !== "Complete" && item.poStatus === "Approved"
-    );
+      // 2. Fetch item data from po_item_master for all po_ids
+      const poIds = masterData.map((r: any) => r.po_id).filter(Boolean);
+      let itemMap: Record<string, { items: { name: string; qty: number }[] }> = {};
 
-    setData(approvedData);
-  } catch (err) {
-    console.error(err);
-    setError("Failed to load data");
-  } finally {
-    setLoading(false);
-  }
-};
+      if (poIds.length > 0) {
+        const { data: itemData, error: itemError } = await supabase
+          .from("po_item_master")
+          .select("po_id, item, qty")
+          .in("po_id", poIds);
+
+        if (!itemError && itemData) {
+          itemData.forEach((item: any) => {
+            if (!itemMap[item.po_id]) {
+              itemMap[item.po_id] = { items: [] };
+            }
+            itemMap[item.po_id].items.push({ name: item.item || "", qty: item.qty || 0 });
+          });
+        }
+      }
+
+      // 3. Fetch firm and project from planning_master for all planning_nos
+      const planningNos = masterData.map((r: any) => r.planning_no).filter(Boolean);
+      const projectNames = masterData.map((r: any) => r.project).filter(Boolean);
+      let planningMap: Record<string, { firm: string; project: string; vendorId: string }> = {};
+
+      if (planningNos.length > 0) {
+        const { data: planningData, error: planningError } = await supabase
+          .from("planning_master")
+          .select("planning_no, firm, project, vendor_id")
+          .in("planning_no", planningNos);
+
+        if (!planningError && planningData) {
+          planningData.forEach((p: any) => {
+            if (p.planning_no) {
+              planningMap[p.planning_no] = {
+                firm: p.firm || "",
+                project: p.project || "",
+                vendorId: p.vendor_id || ""
+              };
+            }
+          });
+        }
+      }
+
+      // 3.1 Fetch Vendor ID from project_master if missing
+      let projectVendorMap: Record<string, string> = {};
+      if (projectNames.length > 0) {
+        const { data: projectData } = await supabase
+          .from("project_master")
+          .select("project_name, vendor_id")
+          .in("project_name", projectNames);
+
+        if (projectData) {
+          projectData.forEach(p => {
+            if (p.project_name) projectVendorMap[p.project_name] = p.vendor_id || "";
+          });
+        }
+      }
+
+      // 4. Fetch receipt historical data for aggregation
+      // 3.5 Fetch Receipt IDs from receipt_master for all planning_nos or po_ids
+      let receiptMap: Record<string, string> = {};
+      if (planningNos.length > 0 || poIds.length > 0) {
+        // Create conditions for the .or() filter
+        const planningCond = planningNos.length > 0 ? `planning_no.in.(${planningNos.map(n => `"${n}"`).join(",")})` : "";
+        const poCond = poIds.length > 0 ? `po_id.in.(${poIds.map(i => `"${i}"`).join(",")})` : "";
+
+        const filter = [planningCond, poCond].filter(Boolean).join(",");
+
+        const { data: receiptData, error: receiptError } = await supabase
+          .from("receipt_master")
+          .select("planning_no, po_id, receipt_id")
+          .or(filter);
+
+        if (!receiptError && receiptData) {
+          console.log("DEBUG: receiptData from backend", receiptData);
+          receiptData.forEach((r: any) => {
+            if (r.receipt_id) {
+              const rid = String(r.receipt_id).trim();
+              if (r.planning_no) receiptMap[String(r.planning_no).trim()] = rid;
+              if (r.po_id) receiptMap[String(r.po_id).trim()] = rid;
+            }
+          });
+        }
+      }
+
+      const { data: receiptDetails, error: receiptError } = await supabase
+        .from("receipt_item_master")
+        .select("planning_no, item, qty_received, received_status")
+        .in("planning_no", planningNos);
+
+      let receivedMap: Record<string, number> = {};
+      let itemApprovedMap: Record<string, boolean> = {};
+
+      if (!receiptError && receiptDetails) {
+        receiptDetails.forEach((r: any) => {
+          const key = `${r.planning_no}_${r.item}`;
+          receivedMap[key] = (receivedMap[key] || 0) + (Number(r.qty_received) || 0);
+          if (r.received_status === "Approved") {
+            itemApprovedMap[key] = true;
+          }
+        });
+      }
+
+      // 5. Merge all data and create one row per item
+      const transformedData: POItem[] = [];
+      masterData.forEach((row: any) => {
+        const poItems = itemMap[row.po_id]?.items || [];
+        const planningInfo = planningMap[row.planning_no] || { firm: "", project: "", vendorId: "" };
+
+        if (poItems.length === 0) {
+          // If no items found, add a single row from master data
+          const receivedQty = receivedMap[`${row.planning_no}_${row.item || "-"}`] || 0;
+          transformedData.push({
+            "Planning No": row.planning_no,
+            "PO No": row.po_id || row.po_no || "-",
+            Date: row.po_date,
+            "Vendor Name": row.vendor_name,
+            "Item Name": row.item || "-",
+            Qty: row.qty || 0,
+            Rate: row.rate || 0,
+            "GST %": row.gst_percent || 0,
+            Discount: row.discount || 0,
+            "Grand Total Amount": row.grand_total || row.net_po_amount || 0,
+            "PO Copy": row.po_copy,
+            "Project Name": planningInfo.project || row.project || "-",
+            "Firm Name": planningInfo.firm || row.firm_name || "-",
+            poStatus: row.status,
+            "Received Qty": receivedQty,
+            "Remaining Qty": Math.max(0, (row.qty || 0) - receivedQty),
+            Planned: row.planned,
+            Status: itemApprovedMap[`${row.planning_no}_${row.item || "-"}`] ? "Approved" : row.receiving_status,
+            Remarks: row.user_remarks,
+            _isDirty: false,
+          } as any);
+        } else {
+          // One row per item
+          poItems.forEach((poItem: any) => {
+            const receivedQty = receivedMap[`${row.planning_no}_${poItem.name}`] || 0;
+            transformedData.push({
+              "Planning No": row.planning_no,
+              "PO No": row.po_id || row.po_no || "-",
+              "Serial Number": "-",
+              Date: row.po_date,
+              "Vendor Name": row.vendor_name,
+              "Item Name": poItem.name || "-",
+              Qty: poItem.qty || 0,
+              Rate: row.rate || 0,
+              "GST %": row.gst_percent || 0,
+              Discount: row.discount || 0,
+              "Grand Total Amount": row.grand_total || row.net_po_amount || 0,
+              "PO Copy": row.po_copy,
+              "Project Name": planningInfo.project || row.project || "-",
+              "Firm Name": planningInfo.firm || row.firm_name || "-",
+              poStatus: row.status,
+              "Received Qty": receivedQty,
+              "Remaining Qty": Math.max(0, (poItem.qty || 0) - receivedQty),
+              Planned: row.planned,
+              Status: itemApprovedMap[`${row.planning_no}_${poItem.name}`] ? "Approved" : row.receiving_status,
+              Remarks: row.user_remarks,
+              _isDirty: false,
+            } as any);
+          });
+        }
+      });
+
+      const approvedData = transformedData.filter(
+        (item) => item.Status !== "Complete" && item.Status !== "Approved" && item.poStatus === "Approved" && item["Remaining Qty"] > 0
+      );
+
+      setData(approvedData);
+    } catch (err) {
+      console.error(err);
+      setError("Failed to load data");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Fetch on mount
   useEffect(() => {
@@ -498,11 +744,14 @@ const fetchHistoryData = async () => {
   const calculateTotalAmount = (item: POItem) => {
     const receivedQty = Number(item["Received Qty"]) || 0;
     const rate = Number(item.Rate) || 0;
+    const discountPercent = Number(item["Discount"]) || 0;
     const gst = Number(item["GST %"]) || 0;
     const transportCharge = Number(item.TransportCharge) || 0;
+    
     const baseAmount = receivedQty * rate;
+    const discountAmount = baseAmount * (discountPercent / 100);
     const gstAmount = baseAmount * (gst / 100);
-    const total = baseAmount + gstAmount + transportCharge; // Added transport charge
+    const total = (baseAmount - discountAmount) + gstAmount + transportCharge;
     return total.toFixed(2);
   };
 
@@ -569,11 +818,13 @@ const fetchHistoryData = async () => {
                 {[
                   "Planning No",
                   "PO No",
-                  "Serial Number",
                   "Date",
                   "Vendor Name",
                   "Item Name",
                   "Qty",
+                  "Received Qty",
+                  "Remaining Qty",
+                  "Status",
                   "PO Copy",
                   "Project Name",
                   "Firm Name",
@@ -643,11 +894,13 @@ const fetchHistoryData = async () => {
                         {[
                           "Planning No",
                           "PO No",
-                          "Serial Number",
                           "Date",
                           "Vendor Name",
                           "Item Name",
                           "Qty",
+                          "Received Qty",
+                          "Remaining Qty",
+                          "Status",
                           "PO Copy",
                           "Project Name",
                           "Firm Name",
@@ -684,9 +937,14 @@ const fetchHistoryData = async () => {
                                   </svg>
                                   View Document
                                 </a>
-                              ) : colKey === "Serial Number" &&
-                                group.itemCount > 1 ? (
-                                `${value} (+${group.itemCount - 1} more)`
+                              ) : colKey === "Status" ? (
+                                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                  String(value).toLowerCase() === "approved" 
+                                    ? "bg-green-100 text-green-800" 
+                                    : "bg-yellow-100 text-yellow-800"
+                                }`}>
+                                  {value || "Pending"}
+                                </span>
                               ) : typeof value === "number" ? (
                                 value.toLocaleString()
                               ) : colKey === "Date" ? (
@@ -757,6 +1015,8 @@ const fetchHistoryData = async () => {
                           "Vendor Name",
                           "Invoice No",
                           "Invoice Date",
+                          "Received Qty",
+                          "Remaining Qty",
                           "Bill Amount",
                           "Invoice Copy",
                         ].map((header) => (
@@ -779,6 +1039,12 @@ const fetchHistoryData = async () => {
                           <td className="px-4 py-3">{item["Bill No"]}</td>
                           <td className="px-4 py-3">
                             {formatDateToDDMMYYYY(item["Bill Date"])}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-center text-gray-900 whitespace-nowrap">
+                            {item["Received Qty"]?.toLocaleString() || "0"}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-center font-bold text-blue-600 whitespace-nowrap">
+                            {item["Remaining Qty"]?.toLocaleString() || "0"}
                           </td>
                           <td className="px-4 py-3">
                             ₹{item["Bill Amount"]?.toLocaleString()}
@@ -1108,10 +1374,16 @@ const fetchHistoryData = async () => {
                                   Rate
                                 </th>
                                 <th className="px-2 py-2 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap sm:px-4 sm:py-3">
-                                  GST
+                                  GST %
+                                </th>
+                                <th className="px-2 py-2 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap sm:px-4 sm:py-3">
+                                  Discount %
                                 </th>
                                 <th className="px-2 py-2 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap sm:px-4 sm:py-3">
                                   Total Amount
+                                </th>
+                                <th className="px-2 py-2 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap sm:px-4 sm:py-3">
+                                  Action
                                 </th>
                               </tr>
                             </thead>
@@ -1122,7 +1394,7 @@ const fetchHistoryData = async () => {
                                     <span className="text-xs font-medium text-gray-900 sm:text-sm">
                                       {item["PO No"]}
                                     </span>
-                                  </td> 
+                                  </td>
                                   <td className="px-2 py-2 whitespace-nowrap sm:px-4 sm:py-3">
                                     <input
                                       type="text"
@@ -1143,7 +1415,7 @@ const fetchHistoryData = async () => {
                                   <td className="px-2 py-2 whitespace-nowrap sm:px-4 sm:py-3">
                                     <input
                                       type="number"
-                                      value={item["Received Qty"] || ""}
+                                      value={item["Received Qty"] === 0 ? "" : (item["Received Qty"] || "")}
                                       onChange={(e) =>
                                         handleFieldChange(
                                           "Received Qty",
@@ -1151,9 +1423,17 @@ const fetchHistoryData = async () => {
                                           itemIndex
                                         )
                                       }
-                                      className="block px-2 py-1 w-20 text-xs border border-gray-300 rounded sm:px-3 sm:py-2 sm:w-32 sm:text-sm"
+                                      className={`block px-2 py-1 w-20 text-xs border rounded sm:px-3 sm:py-2 sm:w-32 sm:text-sm ${
+                                        formErrors[`Received Qty-${itemIndex}`] ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-300'
+                                      }`}
                                       min="0"
+                                      max={item["Qty"]}
                                     />
+                                    {formErrors[`Received Qty-${itemIndex}`] && (
+                                      <p className="mt-1 text-[10px] text-red-600 font-medium">
+                                        Max: {item["Qty"]}
+                                      </p>
+                                    )}
                                   </td>
                                   <td className="px-2 py-2 whitespace-nowrap sm:px-4 sm:py-3">
                                     <input
@@ -1205,6 +1485,24 @@ const fetchHistoryData = async () => {
                                     />
                                   </td>
 
+                                  {/* Make Discount editable */}
+                                  <td className="px-2 py-2 whitespace-nowrap sm:px-4 sm:py-3">
+                                    <input
+                                      type="number"
+                                      value={item["Discount"] || ""}
+                                      onChange={(e) =>
+                                        handleFieldChange(
+                                          "Discount",
+                                          e.target.value,
+                                          itemIndex
+                                        )
+                                      }
+                                      className="block px-2 py-1 w-20 text-xs border border-gray-300 rounded sm:px-3 sm:py-2 sm:w-32 sm:text-sm"
+                                      min="0"
+                                      max="100"
+                                    />
+                                  </td>
+
                                   {/* Total Amount - calculated, read-only */}
                                   <td className="px-2 py-2 whitespace-nowrap sm:px-4 sm:py-3">
                                     <input
@@ -1213,6 +1511,19 @@ const fetchHistoryData = async () => {
                                       readOnly
                                       className="block px-2 py-1 w-20 text-xs bg-gray-50 border border-gray-200 rounded sm:px-3 sm:py-2 sm:w-32 sm:text-sm"
                                     />
+                                  </td>
+                                  <td className="px-2 py-2 whitespace-nowrap sm:px-4 sm:py-3 text-center">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDirectApproveItem(item)}
+                                      disabled={isSubmitting}
+                                      className="p-1.5 text-green-600 hover:text-white hover:bg-green-600 border border-green-300 rounded-full transition-all duration-200"
+                                      title="Mark as Completed (remove from pending)"
+                                    >
+                                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                        <polyline points="20 6 9 17 4 12"></polyline>
+                                      </svg>
+                                    </button>
                                   </td>
                                 </tr>
                               ))}

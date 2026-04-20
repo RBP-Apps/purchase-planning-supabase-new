@@ -73,39 +73,65 @@ const fetchData = async (isRetry = false) => {
     setError(null);
 
     const { data: paymentData, error } = await supabase
-      .from("payment_history")
+      .from("payment_master")
       .select("*")
-      .order("timestamp", { ascending: false });
+      .order("created_at", { ascending: false });
 
     if (error) throw error;
 
-    const CHUNK_SIZE = 100;
-    const transformedData: PaymentItem[] = [];
+    // Fetch vendor names from planning_master and invoice numbers from receipt_master
+    const planningNos = [...new Set((paymentData || []).map((p: any) => p.planning_no).filter(Boolean))];
+    const vendorMap: Record<string, string> = {};
+    const invoiceMap: Record<string, string> = {};
 
-    for (let i = 0; i < (paymentData || []).length; i += CHUNK_SIZE) {
-      const chunk = paymentData.slice(i, i + CHUNK_SIZE);
+    if (planningNos.length > 0) {
+      const [{ data: pData }, { data: rData }] = await Promise.all([
+        supabase
+          .from("planning_master")
+          .select("planning_no, vendor_name")
+          .in("planning_no", planningNos),
+        supabase
+          .from("receipt_master")
+          .select("planning_no, invoice_no")
+          .in("planning_no", planningNos)
+          .order("created_at", { ascending: false })
+      ]);
 
-      const chunkData = chunk.map((row: any) => {
-        return {
-          Timestamp: String(row.timestamp || ""),
-          "Planning No": String(row.planning_no || ""),
-          "Serial Number": String(row.serial_no || ""),
-          "Payment Mode": String(row.payment_mode || ""),
-          Amount: Number(row.amount || 0),
-          Reason: String(row.reason || ""),
-          "Reference No": String(row.ref_no || ""),
-          Deduction: Number(row.deduction || 0),
-          "Vendor Name": String(row.vendor_name || ""),
-          "Bill No": String(row.bill_no || ""),
-        };
-      });
-
-      transformedData.push(...chunkData);
-
-      if (i + CHUNK_SIZE < paymentData.length) {
-        await new Promise((resolve) => setTimeout(resolve, 0));
+      if (pData) {
+        pData.forEach((p: any) => {
+          vendorMap[p.planning_no] = p.vendor_name || "";
+        });
+      }
+      if (rData) {
+        rData.forEach((r: any) => {
+          if (!invoiceMap[r.planning_no]) {
+            invoiceMap[r.planning_no] = r.invoice_no || "";
+          }
+        });
       }
     }
+
+    const transformedData: PaymentItem[] = (paymentData || []).map((row: any) => {
+      // Format date
+      let formattedDate = "";
+      if (row.created_at) {
+        const d = new Date(row.created_at);
+        formattedDate = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+      }
+
+      return {
+        Timestamp: row.created_at,
+        "Planning No": String(row.planning_no || ""),
+        "Serial Number": String(row.payment_id || row.id || ""),
+        "Payment Mode": String(row.payment_mode || ""),
+        Amount: Number(row.amount || 0),
+        Reason: String(row.remark || ""),
+        "Reference No": String(row.reference_no || ""),
+        Deduction: Number(row.deduction || 0),
+        "Vendor Name": vendorMap[row.planning_no] || String(row.vendor_name || ""),
+        "Bill No": invoiceMap[row.planning_no] || String(row.invoice_no || ""),
+      } as any;
+    });
 
     setData(transformedData);
   } catch (err) {

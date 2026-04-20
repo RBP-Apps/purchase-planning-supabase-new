@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Search, Filter, Clock } from "lucide-react";
+import { Search, Filter, Clock, XCircle } from "lucide-react";
 import { supabase } from "../lib/supabase";
 
 const VendorDataPage = () => {
@@ -10,38 +10,98 @@ const VendorDataPage = () => {
   const [filterVendor, setFilterVendor] = useState("all");
 
 
- const loadRows = async () => {
-  setLoading(true);
-  setError(null);
+  const loadRows = async () => {
+    setLoading(true);
+    setError(null);
 
-  try {
-    const { data, error } = await supabase
-      .from("vendors")
-      .select("*")
-      .order("serial_number", { ascending: true });
+    try {
+      // 1. Primary Table: Fetch from receipt_item_master
+      const { data: receiptItems, error: receiptError } = await supabase
+        .from("receipt_item_master")
+        .select("*")
+        .order("created_at", { ascending: false });
 
-    if (error) throw error;
+      if (receiptError) throw receiptError;
 
-    const transformedData = (data || []).map((r, index) => ({
-      id: index + 1,
-      serialNumber: (r.serial_number ?? "").toString().trim(),
-      vendorName: (r.vendor_name ?? "").toString().trim(),
-      totalQty: (r.total_qty ?? "").toString().trim(),
-      totalPOQty: (r.total_po_qty ?? "").toString().trim(),
-      totalReceivedQty: (r.total_received_qty ?? "").toString().trim(),
-    }));
+      const receiptIds = [...new Set((receiptItems || []).map(r => r.receipt_id).filter(Boolean))];
+      const pNos = [...new Set((receiptItems || []).map(r => r.planning_no).filter(Boolean))];
+      
+      // 2. Fetch Vendor Name from receipt_master
+      const { data: masterData } = await supabase
+        .from("receipt_master")
+        .select("receipt_id, vendor_name, po_id")
+        .in("receipt_id", receiptIds);
 
-    const filteredData = transformedData.filter(
-      (r) => r.serialNumber && r.vendorName
-    );
+      const masterMap: Record<string, any> = {};
+      const poIds: string[] = [];
+      (masterData || []).forEach(m => {
+        if (m.receipt_id) {
+          masterMap[m.receipt_id] = m;
+          if (m.po_id) poIds.push(m.po_id);
+        }
+      });
 
-    setRows(filteredData);
-  } catch (e: any) {
-    setError(e?.message || "Failed to load Vendor data");
-  } finally {
-    setLoading(false);
-  }
-};
+      // 3. Fetch Total Qty from planning_item_master
+      const { data: planItems } = await supabase
+        .from("planning_item_master")
+        .select("planning_no, item, qty")
+        .in("planning_no", pNos);
+
+      const planItemMap: Record<string, number> = {};
+      (planItems || []).forEach(p => {
+        if (p.planning_no && p.item) {
+          planItemMap[`${p.planning_no}_${p.item}`] = Number(p.qty) || 0;
+        }
+      });
+
+      // 4. Fetch Total PO Qty from po_item_master
+      const { data: poItems } = await supabase
+        .from("po_item_master")
+        .select("po_id, item, qty")
+        .in("po_id", poIds);
+
+      const poItemMap: Record<string, number> = {};
+      (poItems || []).forEach(p => {
+        if (p.po_id && p.item) {
+          poItemMap[`${p.po_id}_${p.item}`] = Number(p.qty) || 0;
+        }
+      });
+
+      // 5. Transform and combine
+      const transformedData = (receiptItems || []).map((r: any, index: number) => {
+        const pNo = r.planning_no || "";
+        const rId = r.receipt_id || "";
+        const itemName = r.item || "";
+        
+        // Match receipt master data for vendor name and po_id
+        const mDetails = masterMap[rId] || {};
+        const vendorName = mDetails.vendor_name || "-";
+        const poId = mDetails.po_id || "";
+
+        // Get total qty from planning_item_master
+        const totalQty = planItemMap[`${pNo}_${itemName}`] || 0;
+
+        // Get total po qty from po_item_master
+        const totalPOQty = poItemMap[`${poId}_${itemName}`] || 0;
+
+        return {
+          id: index + 1,
+          serialNumber: rId || "-", 
+          vendorName: vendorName, 
+          totalQty: totalQty.toString(),
+          totalPOQty: totalPOQty.toString(),
+          totalReceivedQty: (r.qty_received || 0).toString(),
+          remainingQty: (r.remaining_qty || 0).toString(),
+        };
+      });
+
+      setRows(transformedData);
+    } catch (e: any) {
+      setError(e?.message || "Failed to load Report data");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     loadRows();
@@ -73,7 +133,7 @@ const VendorDataPage = () => {
           <Search className="absolute left-3 top-1/2 w-5 h-5 text-gray-400 transform -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search by Serial or Vendor..."
+            placeholder="Search by Receipt ID or Vendor..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -133,11 +193,12 @@ const VendorDataPage = () => {
           <table className="min-w-full border border-gray-200 rounded text-sm text-left">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 border-b border-gray-200">Serial Number</th>
+                <th className="px-6 py-3 border-b border-gray-200">Receipt ID</th>
                 <th className="px-6 py-3 border-b border-gray-200">Vendor Name</th>
                 <th className="px-6 py-3 border-b border-gray-200">Total Qty</th>
                 <th className="px-6 py-3 border-b border-gray-200">Total PO Qty</th>
                 <th className="px-6 py-3 border-b border-gray-200">Total Received Qty</th>
+                <th className="px-6 py-3 border-b border-gray-200">Remaining Qty</th>
               </tr>
             </thead>
             <tbody>
@@ -160,6 +221,9 @@ const VendorDataPage = () => {
                   </td>
                   <td className="px-6 py-4 border-b border-gray-200 whitespace-nowrap">
                     {row.totalReceivedQty}
+                  </td>
+                  <td className="px-6 py-4 border-b border-gray-200 whitespace-nowrap">
+                    {row.remainingQty}
                   </td>
                 </tr>
               ))}

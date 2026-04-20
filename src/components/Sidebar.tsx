@@ -7,6 +7,7 @@ import {
   FileText,
   Package,
   CreditCard,
+  Settings,
 
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
@@ -31,17 +32,30 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     { name: "Payment", href: "/payment", icon: CreditCard },
     { name: "Payment History", href: "/payment-history", icon: CreditCard },
     { name: "Add User", href: "/users", icon: CreditCard },
+    { name: "Setting", href: "/setting", icon: Settings },
   ];
 
 
-  const userPages = user?.page_access || [];
-
-  // console.log("userPages:", userPages);
+  const userPages = (user?.page_access || []).map((p: string) => p.toLowerCase());
   
-const filteredNavigation =
-  userPages.includes("all")
-    ? navigation
-    : navigation.filter((item) => userPages.includes(item.name));
+  const filteredNavigation =
+    userPages.includes("all")
+      ? navigation
+      : navigation.filter((item) => {
+          const navName = item.name.toLowerCase();
+          
+          if (userPages.includes(navName)) return true;
+          
+          // Aliases mapping DB names -> Sidebar names
+          if (navName === "po generator" && userPages.includes("po")) return true;
+          if (navName === "po history" && userPages.includes("po")) return true;
+          if (navName === "received" && (userPages.includes("receipt") || userPages.includes("received"))) return true;
+          if (navName === "payment history" && userPages.includes("payment")) return true;
+          if (navName === "add user" && userPages.includes("users")) return true;
+          if (navName === "setting" && (userPages.includes("setting") || userPages.includes("seting") || userPages.includes("settings"))) return true;
+          
+          return false;
+        });
 
 
 

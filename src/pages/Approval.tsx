@@ -32,32 +32,63 @@ const Approval = () => {
   try {
 
     const { data, error } = await supabase
-      .from("indent")
-      .select("*")
+      .from("planning_master")
+      .select(`*, planning_item_master (*)`)
       .order("id", { ascending: false });
 
     if (error) throw error;
 
-    const transformedData = (data || []).map((r: any, index: number) => ({
-      id: r.id,
-      planningNo: r.planning_number || "",
-      serialNumber: r.serial_no?.toString() || "",
-      date: r.date || "",
-      requesterName: r.requester_name || "",
-      projectName: r.project_name || "",
-      firmName: r.firm_name || "",
-      vendorName: r.vendor_name || "",
-      itemType: r.item_type || "",
-      itemName: r.item_name || "",
-      qty: r.qty?.toString() || "",
-      remarks: r.remarks || "",
-      state: r.state || "",
-      department: r.department || "",
-      status: r.status || "Pending Review",
-      userRemarks: r.remarks || "",
-      planned: "Yes",
-      actual1: r.actual || "",
-    }));
+    const transformedData: any[] = [];
+    if (data) {
+      data.forEach((master: any) => {
+        const items = master.planning_item_master || [];
+        if (items.length === 0) {
+          transformedData.push({
+            id: `m-${master.id}`,
+            masterId: master.id,
+            planningNo: master.planning_no || "",
+            serialNumber: "-",
+            date: master.date || "",
+            requesterName: master.requester_name || "",
+            projectName: master.project || "",
+            firmName: master.firm || "",
+            vendorName: master.vendor_name || "",
+            itemType: master.item_type || "",
+            itemName: "-",
+            qty: "0",
+            remarks: "-",
+            state: master.state || "",
+            department: master.department || "",
+            status: master.status || "Pending",
+            userRemarks: master.user_remarks || "", 
+            planned: "Yes",
+          });
+        } else {
+          items.forEach((item: any, idx: number) => {
+            transformedData.push({
+              id: item.id,
+              masterId: master.id,
+              planningNo: master.planning_no || "",
+              serialNumber: String(idx + 1),
+              date: master.date || "",
+              requesterName: master.requester_name || "",
+              projectName: master.project || "",
+              firmName: master.firm || "",
+              vendorName: master.vendor_name || "",
+              itemType: master.item_type || "",
+              itemName: item.item || "",
+              qty: String(item.qty) || "0",
+              remarks: item.description || "",
+              state: master.state || "",
+              department: master.department || "",
+              status: item.status || master.status || "Pending",
+              userRemarks: item.user_remarks || "", 
+              planned: "Yes"
+            });
+          });
+        }
+      });
+    }
 
     setRows(transformedData);
 
@@ -74,10 +105,10 @@ const Approval = () => {
 
   // Separate pending and history based on status
   const pendingData = rows.filter(
-    (item) => !item.actual1 || item.actual1.trim() === ""
+    (item) => item.status === "Pending" || item.status === "Pending Review" || !item.status
   );
   const historyData = rows.filter(
-    (item) => item.actual1 && item.actual1.trim() !== ""
+    (item) => item.status === "Approved" || item.status === "Rejected"
   );
 
   const groupByPlanningNo = (data: any[]) => {
@@ -184,26 +215,21 @@ const Approval = () => {
 
     const updateData: any = {
       status: newStatus,
-      actual: new Date().toISOString()
+      user_remarks: item.userRemarks || ""
     };
 
-    if (newStatus === "Rejected") {
-      updateData.remarks = item.userRemarks;
-    }
-
     const { error } = await supabase
-      .from("indent")
+      .from("planning_item_master")
       .update(updateData)
-      .eq("planning_number", planningNo);
+      .eq("id", id);
 
     if (error) throw error;
 
     const newRows = rows.map((r) =>
-      r.planningNo === planningNo
+      r.id === id
         ? {
             ...r,
-            status: newStatus,
-            actual1: new Date().toLocaleDateString("en-US"),
+            status: newStatus
           }
         : r
     );
@@ -546,11 +572,10 @@ const Approval = () => {
                           value={item.userRemarks}
                           onChange={(e) => {
                             const newRemarks = e.target.value;
-                            const planningNo = item.planningNo;
-                            // Update remarks for ALL items with same Planning No
+                            // Update remarks for the specific item
                             setRows((prev) =>
                               prev.map((i) =>
-                                i.planningNo === planningNo
+                                i.id === item.id
                                   ? { ...i, userRemarks: newRemarks }
                                   : i
                               )
@@ -559,11 +584,7 @@ const Approval = () => {
                           className="flex-1 px-2 py-1 text-sm rounded border border-gray-300 focus:ring-1 focus:ring-blue-500 focus:border-transparent"
                           onKeyPress={(e) => {
                             if (e.key === "Enter") {
-                              const planningNo = item.planningNo;
-                              const allMatching = rows.filter(r => r.planningNo === planningNo);
-                              allMatching.forEach(matchingItem => {
-                                handleRemarksSubmit(matchingItem.id, e.currentTarget.value);
-                              });
+                              handleRemarksSubmit(item.id, e.currentTarget.value);
                             }
                           }}
                         />

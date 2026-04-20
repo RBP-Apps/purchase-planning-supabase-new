@@ -21,6 +21,7 @@ import Report from "./pages/Report"
 
 
 import Users from "./pages/users"
+import Setting from "./pages/Setting"
 
 // Layout wrapper component that uses the layout context
 const LayoutWrapper = () => {
@@ -123,6 +124,16 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/setting"
+            element={
+              <ProtectedRoute>
+                <Setting />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/settings" element={<Navigate to="/setting" replace />} />
+          <Route path="/seting" element={<Navigate to="/setting" replace />} />
         </Route>
         {/* Catch all route - redirect to dashboard */}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

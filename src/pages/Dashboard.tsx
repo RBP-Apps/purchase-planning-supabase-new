@@ -516,17 +516,19 @@ const Dashboard = () => {
       // Fetch data from Supabase indent table
       // Using only columns that exist in your schema
       const { data: indentData, error: supabaseError } = await supabase
-        .from("indent")
-        .select(
-          `
+        .from("planning_master")
+        .select(`
           id,
-          planning_number,
+          planning_no,
           date,
           vendor_name,
-          status
-        `
-        )
-        .order("id", { ascending: false }); // Using id instead of created_at for ordering
+          approved_status,
+          planning_item_master (
+            id,
+            status
+          )
+        `)
+        .order("id", { ascending: false });
 
       if (supabaseError) {
         console.error("[Dashboard] Supabase error details:", supabaseError);
@@ -595,19 +597,43 @@ const Dashboard = () => {
       if (vendorName) vendorSet.add(vendorName);
 
       // Process status
-      const status = row.status?.toString().toLowerCase() || "";
+      const masterStatus = row.approved_status?.toString().toLowerCase() || "";
+      const items = row.planning_item_master || [];
 
-      if (status === "approved") {
-        approved++;
-        approvedOrders.push({
-          id: `approved-${row.id || index}`,
-          planningNo: row.planning_number || "",
-          description: `Order ${row.planning_number || "N/A"}`,
+      if (items.length > 0) {
+        // Count statuses from items
+        items.forEach((item: any) => {
+          const itemStatus = item.status?.toString().toLowerCase() || "";
+          if (itemStatus === "approved") {
+            approved++;
+            approvedOrders.push({
+              id: `approved-${item.id || index}`,
+              planningNo: row.planning_no || "",
+              description: `Item in ${row.planning_no || "N/A"}`,
+            });
+          } else if (
+            itemStatus === "pending" ||
+            itemStatus === "pending review" ||
+            !itemStatus
+          ) {
+            pending++;
+          } else if (itemStatus === "rejected") {
+            rejected++;
+          }
         });
-      } else if (status === "pending" || status === "pending review" || status === "") {
-        pending++;
-      } else if (status === "rejected") {
-        rejected++;
+      } else {
+        // Fallback to master status if no items (though there should be)
+        if (masterStatus === "approved") {
+          approved++;
+        } else if (
+          masterStatus === "pending" ||
+          masterStatus === "pending review" ||
+          !masterStatus
+        ) {
+          pending++;
+        } else if (masterStatus === "rejected") {
+          rejected++;
+        }
       }
 
       // Monthly stats (using date field)

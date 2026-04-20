@@ -672,7 +672,7 @@ const pdfBlob = await (await fetch(`data:application/pdf;base64,${pdfBase64}`)).
 const filePath = `po/${Date.now()}.pdf`;
 
 const { data: uploadData, error: uploadError } = await supabase.storage
-  .from("po-pdf")
+  .from("po_generator")
   .upload(filePath, pdfBlob, {
     contentType: "application/pdf",
   });
@@ -683,7 +683,7 @@ if (uploadError) {
 
 // Get public URL
 const { data: publicUrlData } = supabase.storage
-  .from("po-pdf")
+  .from("po_generator")
   .getPublicUrl(filePath);
 
 return {

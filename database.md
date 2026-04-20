@@ -195,7 +195,7 @@ EXECUTE FUNCTION po_auto_logic();
 
 create table public.vendor_details_master (
   id bigserial not null,
-  items_type text null,
+  po_item_type text null,
   vendor_name text null,
   address text null,
   gstin text null,

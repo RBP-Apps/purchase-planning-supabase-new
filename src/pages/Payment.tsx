@@ -10,6 +10,7 @@ interface PaymentItem {
   "Serial Number": string;
   Date: string;
   "Vendor Name": string;
+  "Vendor ID": string;
   "Item Name": string;
   Qty: number;
   "PO Copy": string;
@@ -62,214 +63,127 @@ const PaymentList: React.FC = () => {
   // Layout context to hide sidebar/header/footer when modal is open
   const { setAllHidden } = useLayout();
 
-  // const fetchData = async (isRetry = false) => {
-  //   try {
-  //     setLoading(true);
-  //     setError(null);
 
-  //     // console.log("[PaymentList] Fetching fresh data from server...");
-  //     const targetUrl = `${SCRIPT_URL}?sheet=PO`;
-  //     const url = import.meta.env.DEV ? `/gas?sheet=PO` : targetUrl;
-
-  //     const response = await fetch(url);
-  //     if (!response.ok) {
-  //       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-  //     }
-
-  //     const responseText = await response.text();
-  //     if (
-  //       !responseText.trim().startsWith("{") &&
-  //       !responseText.trim().startsWith("[")
-  //     ) {
-  //       throw new Error(
-  //         `Expected JSON but got: ${responseText.slice(0, 80)}...`
-  //       );
-  //     }
-
-  //     const json = JSON.parse(responseText);
-  //     if (json.error) throw new Error(json.error);
-  //     if (!json.data || !Array.isArray(json.data) || json.data.length === 0) {
-  //       throw new Error("No data returned from the server");
-  //     }
-
-  //     // Header row is index 5 per sheet structure
-  //     const headerRowIndex = 5;
-  //     const headerRow = json.data[headerRowIndex];
-  //     if (!headerRow) throw new Error("Header row not found in the data");
-  //     const headers = headerRow.map((h: any) => String(h || "").trim());
-
-  //     // Data rows start from index 6; filter out empty ones
-  //     const dataRows = json.data
-  //       .slice(headerRowIndex + 1)
-  //       .filter(
-  //         (row: any[]) =>
-  //           row && row.some((cell) => String(cell ?? "").trim() !== "")
-  //       );
-
-  //     // Process data in chunks to avoid blocking the main thread
-  //     const CHUNK_SIZE = 100;
-  //     const transformedData: PaymentItem[] = [];
-
-  //     for (let i = 0; i < dataRows.length; i += CHUNK_SIZE) {
-  //       const chunk = dataRows.slice(i, i + CHUNK_SIZE);
-  //       const chunkData = chunk.map((row: any[]) => {
-  //         const item: Record<string, any> = {};
-  //         headers.forEach((header: string, idx: number) => {
-  //           item[header] = row[idx] ?? "";
-  //         });
-  //         return {
-  //           "Planning No": String(row[1] || ""), // B - Planning No.
-  //           "Serial Number": String(row[2] || ""), // C - Serial No.
-  //           "PO No": String(row[3] || ""), // D - PO No.
-  //           Date: row[4] ? String(row[4]) : "", // E - PO Date
-  //           "Quotation No": String(row[5] || ""), // F - Quotation No
-  //           "Vendor Name": String(row[6] || ""), // G - Vendor Name
-  //           "Item Name": String(row[7] || ""), // H - Item Name
-  //           Qty: Number(row[8] || 0), // I - Qty
-  //           Rate: Number(row[9] || 0), // J - Rate
-  //           "GST %": Number(row[10] || 0), // K - GST %
-  //           Discount: String(row[11] || ""), // L - Discount
-  //           "Grand Total Amount": Number(row[12] || 0), // M - Grand Total Amount
-  //           "PO Copy": String(row[13] || ""), // N - PO Copy
-  //           "Project Name": String(row[14] || ""), // O - Project Name
-  //           "Firm Name": String(row[15] || ""), // P - Firm Name
-  //           poStatus: String(row[16] || ""), // Q - Status (PO Status)
-  //           Remarks: String(row[17] || ""), // R - Remarks
-  //           "PO Signature Image": String(row[18] || ""), // S - PO Signature Image
-  //           "Received Qty": Number(row[19] || 0), // T - Receiving Qty
-  //           Balance: String(row[20] || ""), // U - Balance
-  //           "Receiving Status": String(row[21] || ""), // V - Status (Receiving)
-  //           Planned: String(row[22] || ""), // W - Planned
-  //           Actual: String(row[23] || ""), // X - Actual
-  //           Delay: String(row[24] || ""), // Y - Delay
-  //           "Bill Type": String(row[25] || ""), // Z - Bill Type
-  //           "Bill No": String(row[26] || ""), // AA - Bill No
-  //           "Bill Date": String(row[27] || ""), // AB - Bill Date
-  //           "Bill Amount": Number(row[28] || 0), // AC - Bill Amount
-  //           "Deduction Amount": Number(row[29] || 0), // AD - Discount Amount
-  //           "Bill Image": String(row[30] || ""), // AE - Bill Image
-  //           "Transporter Name": String(row[31] || ""), // AF - Transporter Name
-  //           "LR No.": String(row[32] || ""), // AG - LR No.
-  //           status: String(row[33] || ""), // AH - Receiving Status (duplicate?)
-  //           Remarks2: String(row[34] || ""), // AI - Remarks (duplicate?)
-  //           Planned2: String(row[35] || ""), // AJ - Planned (duplicate?)
-  //           Actual2: String(row[36] || ""), // AK - Actual (duplicate?)
-  //           "Timer Delay": String(row[37] || ""), // AL - Timer Delay
-  //           Status: String(row[38] || ""), // AM - Status (Timer?)
-  //           "Payment Mode": String(row[39] || ""), // AN - Payment Mode
-  //           "Payment Done": String(row[40] || ""), // AO - amount
-  //           Reason: String(row[41] || ""), // AP - reason
-  //           "Ref No": String(row[42] || ""), // AQ - ref no
-  //           "Payment Status": String(row[43] || ""), // AR - Payment Status
-  //           "Pending Amount": Number(row[44] || 0), // AS - Pending Amount
-  //         };
-  //       });
-
-  //       transformedData.push(...chunkData);
-
-  //       // Allow UI to update between chunks
-  //       if (i + CHUNK_SIZE < dataRows.length) {
-  //         await new Promise((resolve) => setTimeout(resolve, 0));
-  //       }
-  //     }
-
-  //     // console.log("transformedData",transformedData);
-
-
-
-  //     setData(transformedData);
-  //     // console.log("[PaymentList] Loaded", transformedData.length, "records");
-  //   } catch (err) {
-  //     console.error("[PaymentList] Error:", err);
-  //     const message =
-  //       err instanceof Error ? err.message : "An unknown error occurred";
-  //     setError(message);
-  //     if (!isRetry && retryCount < 3) {
-  //       const delay = Math.pow(2, retryCount) * 1000;
-  //       // console.log(
-  //       //   `[PaymentList] Retrying in ${delay}ms... (${retryCount + 1}/3)`
-  //       // );
-  //       setTimeout(() => {
-  //         setRetryCount((prev: number) => prev + 1);
-  //         fetchData(true);
-  //       }, delay);
-  //       return;
-  //     }
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // };
 
   const fetchData = async (isRetry = false) => {
-  try {
-    setLoading(true);
-    setError(null);
+    try {
+      setLoading(true);
+      setError(null);
 
-    const { data: poData, error } = await supabase
-      .from("po")
-      .select("*")
-      .order("timestamp", { ascending: false });
+      // 1. Fetch receipt master records (Bills)
+      const { data: receiptData, error: receiptError } = await supabase
+        .from("receipt_master")
+        .select("*")
+        .order("created_at", { ascending: false });
 
-    if (error) throw error;
+      if (receiptError) throw receiptError;
 
-    const transformedData: PaymentItem[] = (poData || []).map((row: any) => ({
-      "Planning No": row.planning_no || "",
-      "Serial Number": String(row.serial_no || ""),
-      "PO No": row.po_no || "",
-      Date: row.po_date || "",
-      "Quotation No": row.quotation_no || "",
-      "Vendor Name": row.vendor_name || "",
-      "Item Name": row.item_name || "",
-      Qty: Number(row.qty || 0),
-      Rate: Number(row.rate || 0),
-      "GST %": Number(row.gst_percent || 0),
-      Discount: row.discount || "",
-      "Grand Total Amount": Number(row.grand_total || 0),
-      "PO Copy": row.po_copy || "",
-      "Project Name": row.project || "",
-      "Firm Name": row.firm_name || "",
-      poStatus: row.status || "",
-      Remarks: row.remarks || "",
-      "PO Signature Image": row.po_signature_image || "",
-      "Received Qty": Number(row.receiving_qty || 0),
-      Balance: row.balance || "",
-      "Receiving Status": row.receiving_status || "",
-      Planned: row.planned || "",
-      Actual: row.actual || "",
-      Delay: row.delay || "",
-      "Bill Type": row.bill_type || "",
-      "Payment Mode": row.payment_mode || "",
-      Amount: row.amount || 0,
-      Reason: row.reason || "",
-      "Reference No": row.ref_no || "",
-      "Payment Status": row.payment_status || "",
-      "Pending Amount": row.pending_amount || 0,
-      Deduction: row.deduction || 0,
-      Planned2: row.planned_payment || "",
-      Actual2: row.actual_payment || "",
-    }));
+      const masterData = receiptData || [];
 
-    setData(transformedData);
-  } catch (err) {
-    console.error("[PaymentList] Error:", err);
-    const message =
-      err instanceof Error ? err.message : "An unknown error occurred";
-    setError(message);
+      // 2. Fetch related items from receipt_item_master (Items)
+      const planningNos = masterData.map((r: any) => r.planning_no).filter(Boolean);
+      let itemMap: Record<string, { item_name: string; qty: number }[]> = {};
 
-    if (!isRetry && retryCount < 3) {
-      const delay = Math.pow(2, retryCount) * 1000;
+      if (planningNos.length > 0) {
+        const { data: itemData, error: itemError } = await supabase
+          .from("receipt_item_master")
+          .select("planning_no, qty_received") // Assuming it has item_name too, if not we'll join po_item_master
+          .in("planning_no", planningNos);
 
-      setTimeout(() => {
-        setRetryCount((prev) => prev + 1);
-        fetchData(true);
-      }, delay);
+        if (!itemError && itemData) {
+          itemData.forEach((item: any) => {
+            if (!itemMap[item.planning_no]) itemMap[item.planning_no] = [];
+            itemMap[item.planning_no].push({
+              item_name: item.item_name || "Item",
+              qty: item.qty_received || 0
+            });
+          });
+        }
+      }
 
-      return;
+      // 3. Fetch firm and project from planning_master
+      let planningMap: Record<string, { firm: string; project: string }> = {};
+      if (planningNos.length > 0) {
+        const { data: planningData, error: planningError } = await supabase
+          .from("planning_master")
+          .select("planning_no, firm, project, vendor_id")
+          .in("planning_no", planningNos);
+
+        if (!planningError && planningData) {
+          planningData.forEach((p: any) => {
+            planningMap[p.planning_no] = {
+              firm: p.firm || "",
+              project: p.project || "",
+              vendorId: p.vendor_id || ""
+            };
+          });
+        }
+      }
+
+      // 4. Fetch payment status from payment_master
+      const { data: paymentStatusData, error: paymentStatusError } = await supabase
+        .from("payment_master")
+        .select("planning_no, payment_status")
+        .in("planning_no", planningNos)
+        .eq("payment_status", "payment done");
+
+      const paidPlanningNos = new Set(
+        (paymentStatusData || []).map((p: any) => p.planning_no)
+      );
+
+      // 5. Transform all data
+      const transformedData: PaymentItem[] = [];
+      masterData.forEach((row: any) => {
+        const items = itemMap[row.planning_no] || [];
+        const planningInfo = planningMap[row.planning_no] || { firm: "", project: "", vendorId: "" };
+        const isPaid = paidPlanningNos.has(row.planning_no);
+        const poStatusInfo = { 
+          status: isPaid ? "payment done" : "Pending", 
+          done: 0, 
+          pending: row.total_invoice_amount || 0 
+        };
+
+        // Flat mapping to one row per item or per invoice? 
+        // Based on previous design, it seems they want one row per invoice in Payment list.
+        transformedData.push({
+          "Planning No": row.planning_no || "",
+          "PO No": row.po_id || "",
+          "Serial Number": "-",
+          Date: row.receipt_date || "",
+          "Vendor Name": row.vendor_name || "",
+          "Vendor ID": planningInfo.vendorId || "-",
+          "Item Name": items.map(i => i.item_name).join(", ") || "-",
+          Qty: items.reduce((sum, i) => sum + i.qty, 0),
+          "PO Copy": row.invoice_copy || "",
+          "Project Name": planningInfo.project || "-",
+          "Firm Name": planningInfo.firm || "-",
+          "Bill Type": "Invoice",
+          "Bill No": row.invoice_no || "",
+          "Bill Date": row.invoice_date || "",
+          "Bill Amount": row.total_invoice_amount || 0,
+          "Deduction Amount": row.deduction || 0,
+          "Bill Image": row.invoice_copy || "",
+          "Transporter Name": row.transport_name || "",
+          "LR No.": row.lr_no || "",
+          "Payment Status": poStatusInfo.status,
+          "Payment Done": poStatusInfo.done,
+          "Pending Amount": poStatusInfo.pending,
+          status: poStatusInfo.status,
+          Remarks: "",
+          "Quotation No": "",
+          Planned2: "",
+          Actual2: "",
+        } as any);
+      });
+
+      setData(transformedData);
+    } catch (err) {
+      console.error("[PaymentList] Error:", err);
+      setError(err instanceof Error ? err.message : "An unknown error occurred");
+    } finally {
+      setLoading(false);
     }
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   // Fetch on mount
   useEffect(() => {
@@ -305,13 +219,13 @@ const PaymentList: React.FC = () => {
   //   setIsSubmitting(true);
   //   try {
   //     // Prepare the data for Google Sheets
-  //     const rowData = new Array(8).fill(""); // 8 columns: Timestamp, Planning No., Serial No., Payment Mode, amount, reason, ref no, Deduction
+  //     const rowData = new Array(8).fill(""); // 8 columns: Timestamp, Planning No., Serial No., Payment Mode, amount, remark, ref no, Deduction
   //     rowData[0] = new Date().toLocaleDateString("en-US"); // Timestamp
   //     rowData[1] = selectedItem["Planning No"] || ""; // Planning No.
   //     rowData[2] = selectedItem["Serial Number"] || ""; // Serial No.
   //     rowData[3] = selectedItem["Payment Mode"] || ""; // Payment Mode
   //     rowData[4] = selectedItem.Amount || 0; // amount
-  //     rowData[5] = selectedItem.Reason || ""; // reason
+  //     rowData[5] = selectedItem.Reason || ""; // remark
   //     rowData[6] = selectedItem["Reference No"] || ""; // ref no
   //     rowData[7] = selectedItem.Deduction || 0; // Deduction
 
@@ -377,50 +291,62 @@ const PaymentList: React.FC = () => {
   // };
 
   const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  if (!selectedItem) return;
+    e.preventDefault();
+    if (!selectedItem) return;
 
-  setIsSubmitting(true);
+    setIsSubmitting(true);
 
-  try {
-    const { error } = await supabase
-      .from("po")
-      .update({
-        payment_mode: selectedItem["Payment Mode"],
-        amount: selectedItem.Amount || 0,
-        reason: selectedItem.Reason || "",
-        ref_no: selectedItem["Reference No"] || "",
-        deduction: selectedItem.Deduction || 0,
-        payment_status: "Done",
-      })
-      .eq("po_no", selectedItem["PO No"]);
+    try {
+      // Generate next payment_id
+      const { data: existingPayments } = await supabase
+        .from("payment_master")
+        .select("payment_id")
+        .order("id", { ascending: false });
 
-    if (error) throw error;
+      let nextPayID = "PI-001";
+      if (existingPayments && existingPayments.length > 0) {
+        const payIds = existingPayments
+          .map((p) => p.payment_id)
+          .filter((id) => id && id.startsWith("PI-"));
+        
+        if (payIds.length > 0) {
+          const numbers = payIds.map((id) => {
+            const match = id.match(/PI-(\d+)/);
+            return match ? parseInt(match[1]) : 0;
+          });
+          const max = Math.max(...numbers);
+          nextPayID = "PI-" + String(max + 1).padStart(3, "0");
+        }
+      }
 
-    setData((prevData) =>
-      prevData.map((d) =>
-        d["PO No"] === selectedItem["PO No"] ? selectedItem : d
-      )
-    );
+      // 1. Record/Update payment details in payment_master
+      const { error: paymentError } = await supabase
+        .from("payment_master")
+        .insert({
+          payment_id: nextPayID,
+          planning_no: selectedItem["Planning No"],
+          payment_mode: selectedItem["Payment Mode"],
+          amount: selectedItem.Amount || 0,
+          remark: selectedItem.Reason || "",
+          reference_no: selectedItem["Reference No"] || "",
+          deduction: selectedItem.Deduction || 0,
+          payment_status: "payment done",
+        });
 
-    alert("Payment details saved successfully!");
+      if (paymentError) throw paymentError;
 
-    setShowModal(false);
-
-    await fetchData(true);
-  } catch (error) {
-    console.error("Error saving payment data:", error);
-
-    setFormErrors({
-      submit:
-        error instanceof Error
-          ? error.message
-          : "Failed to save changes. Please try again.",
-    });
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+      alert("Payment details saved successfully!");
+      setShowModal(false);
+      await fetchData();
+    } catch (error) {
+      console.error("Error saving payment data:", error);
+      setFormErrors({
+        submit: error instanceof Error ? error.message : "Failed to save changes. Please try again.",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const filteredData = data
     .filter((item) => {
@@ -430,18 +356,19 @@ const PaymentList: React.FC = () => {
         (item["Planning No"] || "").toLowerCase().includes(q) ||
         (item["PO No"] || "").toLowerCase().includes(q) ||
         (item["Vendor Name"] || "").toLowerCase().includes(q) ||
+        (item["Vendor ID"] || "").toLowerCase().includes(q) ||
         (item["Item Name"] || "").toLowerCase().includes(q) ||
         (item["Project Name"] || "").toLowerCase().includes(q) ||
         (item["Firm Name"] || "").toLowerCase().includes(q)
       );
     })
-    // .filter((item) => !item["Payment Status"] || item["Payment Status"] === "Pending")
-    // .reduce((unique: PaymentItem[], item) => {
-    //   if (!unique.find((u) => u["Planning No"] === item["Planning No"])) {
-    //     unique.push(item);
-    //   }
-    //   return unique;
-    // }, []);
+    .filter((item) => item["Payment Status"] !== "payment done")
+    .reduce((unique: PaymentItem[], item) => {
+      if (!unique.find((u) => u["Planning No"] === item["Planning No"])) {
+        unique.push(item);
+      }
+      return unique;
+    }, []);
 
   // Loading and error states
   if (loading) {
@@ -537,9 +464,9 @@ const PaymentList: React.FC = () => {
                 {[
                   "Planning No.",
                   "PO No.",
-                  "Serial Number",
+                  // "Serial Number",
                   "Date",
-                  "Vendor Name",
+                  "Vendor ID", "Vendor Name",
                   "Bill Amount",
 
                   "PO Copy",
@@ -596,9 +523,9 @@ const PaymentList: React.FC = () => {
                     {[
                       "Planning No",
                       "PO No",
-                      "Serial Number",
+                      // "Serial Number",
                       "Date",
-                      "Vendor Name",
+                      "Vendor ID", "Vendor Name",
                       "Bill Amount",
 
                       "PO Copy",
@@ -776,7 +703,7 @@ const PaymentList: React.FC = () => {
                               {selectedItem["PO No"] || "-"}
                             </div>
                           </div>
-                       
+
                           <div>
                             <label className="block mb-1 text-xs font-medium tracking-wider text-gray-500 uppercase">
                               Bill Date
@@ -1025,13 +952,13 @@ const PaymentList: React.FC = () => {
                         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                           <div>
                             <label
-                              htmlFor="reason"
+                              htmlFor="remark"
                               className="block mb-1 text-xs font-medium tracking-wider text-gray-500 uppercase"
                             >
                               Reason
                             </label>
                             <textarea
-                              id="reason"
+                              id="remark"
                               rows={3}
                               value={selectedItem.Reason || ""}
                               onChange={(e) => {
@@ -1042,7 +969,7 @@ const PaymentList: React.FC = () => {
                                 }));
                               }}
                               className="block px-3 py-2 w-full text-sm bg-white rounded-lg border border-gray-300 shadow-sm transition-colors duration-200 resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                              placeholder="Enter payment reason..."
+                              placeholder="Enter payment remark..."
                               disabled={isSubmitting}
                             />
                           </div>

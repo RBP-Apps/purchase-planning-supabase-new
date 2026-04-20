@@ -81,6 +81,9 @@ const POGenerator = () => {
   const [planningToFirm, setPlanningToFirm] = useState<Record<string, string>>(
     {}
   );
+  const [planningToVendorId, setPlanningToVendorId] = useState<Record<string, string>>(
+    {}
+  );
 
 
   const [preparedBy, setPreparedBy] = useState("");
@@ -121,6 +124,7 @@ const [approvedBy, setApprovedBy] = useState("");
     gstNumber: "",
     supplierEmail: "",
     supplierAddress: "",
+    vendorId: "",
     preparedBy: "",
     approvedBy: "",
   });
@@ -178,38 +182,79 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
   return data || [];
 };
 
-  // Load INDENT options and planning->vendor map
+  // Load planning_master options and planning->vendor map
   useEffect(() => {
     const loadIndents = async () => {
       setLoadingIndents(true);
       setError(null);
       try {
-      const data = await fetchSheet("indent");
-const body = data;
+        // 1. Fetch only Approved planning_nos from planning_item_master
+        const { data: approvedItems, error: itemsError } = await supabase
+          .from("planning_item_master")
+          .select("planning_no")
+          .eq("status", "Approved");
 
+        if (itemsError) throw itemsError;
 
+        // 2. Fetch already processed planning_nos from purchase_order_master
+        const { data: processedPOs, error: poError } = await supabase
+          .from("purchase_order_master")
+          .select("planning_no");
+
+        if (poError) throw poError;
+
+        const processedPlanningNos = new Set(
+          processedPOs?.map((po) => po.planning_no).filter(Boolean)
+        );
+
+        const approvedPlanningNos = [
+          ...new Set(
+            approvedItems
+              ?.map((item) => item.planning_no)
+              .filter((pNo) => pNo && !processedPlanningNos.has(pNo))
+          ),
+        ];
+
+        if (approvedPlanningNos.length === 0) {
+          setIndentOptions([]);
+          setLoadingIndents(false);
+          return;
+        }
+
+        // 3. Fetch corresponding master records
+        const { data: masterData, error: masterError } = await supabase
+          .from("planning_master")
+          .select("planning_no, vendor_name, firm, vendor_id")
+          .in("planning_no", approvedPlanningNos);
+
+        if (masterError) throw masterError;
+
+        const body = masterData || [];
         const options: string[] = [];
         const planningVendor: Record<string, string> = {};
         const planningFirm: Record<string, string> = {};
-
-        // console.log("body", body);
+        const planningVId: Record<string, string> = {};
 
         body.forEach((r) => {
-  const planningNo = r.planning_number;
-  const vendorName = r.vendor_name;
-  const firmName = r.firm_name;
+          const planningNo = r.planning_no;
+          const vendorName = r.vendor_name;
+          const firmName = r.firm;
+          const vendorId = r.vendor_id;
 
-  if (planningNo) {
-    options.push(planningNo);
-    if (vendorName) planningVendor[planningNo] = vendorName;
-    if (firmName) planningFirm[planningNo] = firmName;
-  }
-});
+          if (planningNo) {
+            options.push(planningNo);
+            if (vendorName) planningVendor[planningNo] = vendorName;
+            if (firmName) planningFirm[planningNo] = firmName;
+            if (vendorId) planningVId[planningNo] = vendorId;
+          }
+        });
+
         // De-duplicate while preserving order
         const uniqueOptions = Array.from(new Set(options));
         setIndentOptions(uniqueOptions);
         setPlanningToVendor(planningVendor);
         setPlanningToFirm(planningFirm);
+        setPlanningToVendorId(planningVId);
       } catch (e: any) {
         console.error(e);
         setError(e?.message || "Failed to load indent options");
@@ -239,15 +284,20 @@ const ensureVendorDirectory = async () => {
   if (Object.keys(vendorDirectory).length > 0) return vendorDirectory;
   setLoadingVendor(true);
   try {
-    const vendorSheet = await fetchSheet("vendor_details_master");
+    const { data: vendorSheet, error } = await supabase
+      .from("project_master")
+      .select("vendor_name, vendor_address, vendor_gstin, vendor_email")
+      .not("vendor_name", "is", null);
+    
+    if (error) throw error;
     
     const dir: Record<string, { address: string; gstin: string; email: string }> = {};
     
-    vendorSheet.forEach((vendor: any) => {
+    (vendorSheet || []).forEach((vendor: any) => {
       const name = vendor.vendor_name?.toString().trim();
-      const address = vendor.address?.toString() || "";
-      const gstin = vendor.gstin?.toString().trim() || "";
-      const email = vendor.email_address?.toString().trim() || "";
+      const address = vendor.vendor_address?.toString() || "";
+      const gstin = vendor.vendor_gstin?.toString().trim() || "";
+      const email = vendor.vendor_email?.toString().trim() || "";
       
       if (name) dir[name] = { address, gstin, email };
     });
@@ -270,6 +320,7 @@ const ensureVendorDirectory = async () => {
     setSelectedFirm("RBP INDIA PRIVATE LIMITED");
     setPoData((prev) => ({
       ...prev,
+      vendorId: "",
       supplierAddress: "",
       gstNumber: "",
       supplierEmail: "",
@@ -282,8 +333,10 @@ const ensureVendorDirectory = async () => {
     setLoadingVendor(true);
     const vendorName = planningToVendor[indentNo] || "";
     const firmName = planningToFirm[indentNo] || "RBP INDIA PRIVATE LIMITED";
+    const vId = planningToVendorId[indentNo] || "";
     setSelectedSupplier(vendorName);
     setSelectedFirm(firmName);
+    setPoData(prev => ({ ...prev, vendorId: vId }));
     
     const currentVendorDir = await ensureVendorDirectory();
     const info = currentVendorDir[vendorName] || {};
@@ -296,26 +349,47 @@ const ensureVendorDirectory = async () => {
     }));
     
     // Load products for this indent
-    const { data, error } = await supabase
-      .from("indent")
+    const { data: mData } = await supabase
+      .from("planning_master")
       .select("*")
-      .eq("planning_number", indentNo);
+      .eq("planning_no", indentNo);
+    
+    let mRow: any = null;
+    if (mData && mData.length > 0) mRow = mData[0];
+
+    const { data, error } = await supabase
+      .from("planning_item_master")
+      .select("*")
+      .eq("planning_no", indentNo)
+      .eq("status", "Approved");
 
     if (error) throw error;
 
-    const mapped: ProductItem[] = (data || []).map((r: any) => ({
-      sn: r.serial_no || 0,
-      internalCode: r.planning_number || "",
-      itemType: r.item_type || "",
-      product: r.item_name || "",
-      description: r.remarks || "",
-      qty: Number(r.qty) || 0,
-      unit: r.uom || "",
-      rate: 0,
-      gst: 0,
-      discount: 0,
-      amount: 0,
-    })).sort((a, b) => a.sn - b.sn);
+    const mapped: ProductItem[] = (data || []).map((r: any, idx: number) => {
+      let unit = r.uom || "-";
+      let desc = r.description || "";
+      if (unit === "-") {
+        const match = desc.match(/\(UOM:\s*(.*?)\)/);
+        if (match) {
+          unit = match[1];
+          desc = desc.replace(match[0], "").trim();
+        }
+      }
+
+      return {
+        sn: idx + 1,
+        internalCode: r.planning_no || "",
+        itemType: mRow?.item_type || "",
+        product: r.item || "",
+        description: desc,
+        qty: Number(r.qty) || 0,
+        unit: unit,
+        rate: 0,
+        gst: 0,
+        discount: 0,
+        amount: 0,
+      };
+    }).sort((a, b) => a.sn - b.sn);
     
     setProducts(mapped);
   } catch (error) {
@@ -349,57 +423,61 @@ const ensureVendorDirectory = async () => {
     return { subtotal, gstAmount, grandTotal };
   };
 
- const savePOHistory = async (pdfLink: string) => {
-  const planningNo = selectedIndent || "AUTO-" + Date.now();
-  const poNo = poData.poNumber || "AUTO-" + Date.now();
-  const poDate = poData.poDate;
-  const vendorName = selectedSupplier;
+  const savePOHistory = async (pdfLink: string) => {
+   const planningNo = selectedIndent || "AUTO-" + Date.now();
+   const poNo = poData.poNumber || "AUTO-" + Date.now();
+   const poDate = poData.poDate || new Date().toISOString().split('T')[0];
+   const vendorName = selectedSupplier;
+ 
+   let netPoAmount = 0;
 
-  const rows = products.map((item, idx) => {
-    const baseAmount = item.rate * item.qty;
-    const discountAmount = (baseAmount * item.discount) / 100;
-    const amountAfterDiscount = baseAmount - discountAmount;
-    const gstAmount = (amountAfterDiscount * item.gst) / 100;
-    const finalAmount = amountAfterDiscount + gstAmount;
+   const poItemRows = products.map((item) => {
+     const baseAmount = item.rate * item.qty;
+     const discountAmount = (baseAmount * item.discount) / 100;
+     const amountAfterDiscount = baseAmount - discountAmount;
+     const gstAmount = (amountAfterDiscount * item.gst) / 100;
+     const finalAmount = amountAfterDiscount + gstAmount;
+     
+     netPoAmount += finalAmount;
+ 
+     return {
+       po_id: poNo,
+       planning_no: planningNo,
+       item: item.product,
+       qty: item.qty,
+       rate: item.rate,
+       gst_percent: item.gst,
+       discount_percent: item.discount,
+       net_amount: Math.round(finalAmount)
+     };
+   });
+ 
+   const poMasterRow = {
+     po_id: poNo,
+     po_date: poDate,
+     planning_no: planningNo,
+     vendor_name: vendorName,
+     net_po_amount: Math.round(netPoAmount),
+     prepared_by: poData.preparedBy,
+     approved_by: poData.approvedBy,
+     po_copy: pdfLink,
+      vendor_id: poData.vendorId
+   };
 
+   try {
+     const { error: masterError } = await supabase
+       .from("purchase_order_master")
+       .insert([poMasterRow]);
+ 
+     if (masterError) throw masterError;
 
-    return {
-  planning_no: planningNo,
-  serial_no: idx + 1,
-
-  po_no: poNo,
-  po_date: poDate,
-  quotation_no: poData.quotationNo || "",
-
-  vendor_name: vendorName,
-  item_name: item.product,
-
-  qty: item.qty,
-  rate: item.rate,
-  gst_percent: item.gst,
-  discount: item.discount,
-
-  grand_total: Math.round(finalAmount),
-
-  firm_name: selectedFirm,        // ⭐ firm name from header
-  project: poData.project || "",  // ⭐ project
-
-  prepared_by: poData.preparedBy, // ⭐ prepared by
-  approved_by: poData.approvedBy, // ⭐ approved by
-
-  po_copy: pdfLink
-};
-
-  });
-
-  try {
-    const { error } = await supabase
-      .from("po")
-      .insert(rows);
-
-    if (error) throw error;
-
-    return { success: true };
+     const { error: itemsError } = await supabase
+       .from("po_item_master")
+       .insert(poItemRows);
+       
+     if (itemsError) throw itemsError;
+ 
+     return { success: true };
   } catch (error: any) {
     console.error("Supabase insert error:", error);
     return { success: false, error: error.message };
@@ -570,9 +648,10 @@ const fetchTermsForItemType = async (itemType: string) => {
 
   try {
     const { data, error } = await supabase
-      .from("po_masters")
+      .from("project_master")
       .select("terms_and_conditions")
-      .eq("item_type", itemType);
+      .eq("item_type", itemType)
+      .not("terms_and_conditions", "is", null);
 
     if (error) throw error;
 
@@ -645,6 +724,7 @@ const fetchTermsForItemType = async (itemType: string) => {
       gstNumber: "",
       supplierEmail: "",
       supplierAddress: "",
+      vendorId: "",
       preparedBy: "",
       approvedBy: "",
       project: "",
@@ -846,6 +926,23 @@ const fetchTermsForItemType = async (itemType: string) => {
                 type="text"
                 value={poData.supplierAddress.replace(/\n/g, ", ")}
                 className="px-3 py-2 w-full bg-gray-100 rounded-lg border border-gray-300"
+                disabled
+              />
+            </div>
+
+            <div>
+              <label className="block mb-2 text-sm font-medium text-gray-700">
+                Vendor ID
+              </label>
+              <input
+                type="text"
+                value={poData.vendorId}
+                className="px-3 py-2 w-full bg-gray-100 rounded-lg border border-gray-300"
+                placeholder={
+                  selectedIndent
+                    ? "Auto-filled from indent"
+                    : "Select Indent No First"
+                }
                 disabled
               />
             </div>

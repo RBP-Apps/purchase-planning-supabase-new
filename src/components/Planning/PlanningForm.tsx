@@ -17,7 +17,12 @@ import {
 interface PlanningFormProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess?: () => void; // Add this
+  onSuccess?: () => void;
+  initialData?: {
+    formData: FormData;
+    products: Product[];
+    planningNo: string;
+  };
 }
 
 interface Product {
@@ -42,12 +47,14 @@ interface FormData {
   department: string;
   packingDetailSelect: string;
   masterQuantity: string;
+  vendorId: string;
 }
 
 const PlanningForm: React.FC<PlanningFormProps> = ({
   isOpen,
   onClose,
   onSuccess,
+  initialData,
 }) => {
 
 
@@ -62,6 +69,7 @@ const PlanningForm: React.FC<PlanningFormProps> = ({
     department: "",
     packingDetailSelect: "",
     masterQuantity: "",
+    vendorId: "",
   });
 
   const [products, setProducts] = useState<Product[]>([]);
@@ -76,6 +84,7 @@ const PlanningForm: React.FC<PlanningFormProps> = ({
   const [departmentOptionsFlat, setDepartmentOptionsFlat] = useState<string[]>(
     []
   );
+  const [vendorIdOptions, setVendorIdOptions] = useState<string[]>([]);
 
   const [packingDetailOptions, setPackingDetailOptions] = useState<string[]>([]);
 
@@ -121,30 +130,30 @@ const PlanningForm: React.FC<PlanningFormProps> = ({
 
   //     // 2. Fetch firms from Supabase
   //     const { data: firmData } = await supabase
-  //       .from("firm_master")
+  //       .from("project_master")
   //       .select("firm_name");
 
   //     setFirmOptions([...new Set(firmData?.map(f => f.firm_name) || [])]);
 
   //     // 3. Fetch vendors with their item types from Supabase
   //     const { data: vendorData } = await supabase
-  //       .from("vendor_details_master")
-  //       .select("vendor_name, items_type");
+  //       .from("project_master")
+  //       .select("vendor_name, item_type");
 
   //     if (vendorData) {
   //       setVendorOptionsFlat([...new Set(vendorData.map(v => v.vendor_name))]);
 
   //       const mapping: Record<string, string[]> = {};
   //       vendorData.forEach(v => {
-  //         if (!mapping[v.items_type]) mapping[v.items_type] = [];
-  //         mapping[v.items_type].push(v.vendor_name);
+  //         if (!mapping[v.item_type]) mapping[v.item_type] = [];
+  //         mapping[v.item_type].push(v.vendor_name);
   //       });
   //       setItemTypeToVendors(mapping);
   //     }
 
   //     // 4. Fetch products from Supabase
   //     const { data: productData } = await supabase
-  //       .from("product_master")
+  //       .from("project_master")
   //       .select("product_name, group_head, uom");
 
   //     if (productData) {
@@ -157,9 +166,9 @@ const PlanningForm: React.FC<PlanningFormProps> = ({
   //       );
   //     }
 
-  //     // 5. Fetch UOM options from product_master (unique UOMs)
+  //     // 5. Fetch UOM options from project_master (unique UOMs)
   //     const { data: uomData } = await supabase
-  //       .from("product_master")
+  //       .from("project_master")
   //       .select("uom")
   //       .not("uom", "is", null)
   //       .not("uom", "eq", "");
@@ -195,14 +204,14 @@ const PlanningForm: React.FC<PlanningFormProps> = ({
   //     ];
   //     setDepartmentOptionsFlat(departmentOptionsList);
 
-  //     // 8. Set ITEM TYPE options from vendor_details_master (unique item types)
+  //     // 8. Set ITEM TYPE options from project_master (unique item types)
   //     const { data: itemTypeData } = await supabase
-  //       .from("vendor_details_master")
-  //       .select("items_type")
-  //       .not("items_type", "is", null)
-  //       .not("items_type", "eq", "");
+  //       .from("project_master")
+  //       .select("item_type")
+  //       .not("item_type", "is", null)
+  //       .not("item_type", "eq", "");
 
-  //     const uniqueItemTypes = [...new Set(itemTypeData?.map(i => i.items_type) || [])];
+  //     const uniqueItemTypes = [...new Set(itemTypeData?.map(i => i.item_type) || [])];
   //     setItemTypeOptions(uniqueItemTypes.length > 0 ? uniqueItemTypes : [
   //       "CABLE",
   //       "POLYMER",
@@ -249,155 +258,87 @@ const PlanningForm: React.FC<PlanningFormProps> = ({
 
 
 
-const fetchDropdownData = async () => {
-  try {
-    setDropdownLoading(true);
+  const fetchDropdownData = async () => {
+    try {
+      setDropdownLoading(true);
 
-    // 1. Fetch projects from project_master
-    const { data: projectData } = await supabase
-      .from("project_master")
-      .select("project_name")
-      .not("project_name", "is", null)
-      .not("project_name", "eq", "");
-    
-    setProjectOptions([...new Set(projectData?.map(p => p.project_name) || [])]);
+      // 1-7. Fetch all required fields from project_master in simplified calls
+      const { data: pmData, error: pmError } = await supabase
+        .from("project_master")
+        .select("project_name, firm_name, vendor_name, item_type, uom, state, department_name, vendor_id, product_name");
 
-    // 2. Fetch firms from firm_master
-    const { data: firmData } = await supabase
-      .from("firm_master")
-      .select("firm_name")
-      .not("firm_name", "is", null)
-      .not("firm_name", "eq", "");
-    
-    setFirmOptions([...new Set(firmData?.map(f => f.firm_name) || [])]);
+      if (pmError) throw pmError;
 
-    // 3. Fetch vendors with their item types from vendor_details_master
-    const { data: vendorData } = await supabase
-      .from("vendor_details_master")
-      .select("vendor_name, items_type")
-      .not("vendor_name", "is", null)
-      .not("vendor_name", "eq", "");
+      if (pmData) {
+        // Project Options
+        setProjectOptions([...new Set(pmData.map(p => p.project_name).filter(Boolean))]);
+        
+        // Firm Options
+        setFirmOptions([...new Set(pmData.map(f => f.firm_name).filter(Boolean))]);
+        
+        // Vendor Options & Item Type Mapping
+        const vendors = [...new Set(pmData.map(v => v.vendor_name).filter(Boolean))];
+        setVendorOptionsFlat(vendors);
 
-    if (vendorData) {
-      setVendorOptionsFlat([...new Set(vendorData.map(v => v.vendor_name))]);
-
-      const mapping: Record<string, string[]> = {};
-      vendorData.forEach(v => {
-        if (v.items_type) {
-          if (!mapping[v.items_type]) mapping[v.items_type] = [];
-          mapping[v.items_type].push(v.vendor_name);
-        }
-      });
-      setItemTypeToVendors(mapping);
-    }
-
-    // 4. Fetch UOM options from product_master
-    const { data: uomData } = await supabase
-      .from("product_master")
-      .select("uom")
-      .not("uom", "is", null)
-      .not("uom", "eq", "");
-    
-    const uniqueUoms = [...new Set(uomData?.map(u => u.uom) || [])];
-    if (uniqueUoms.length > 0) {
-      setUomOptions(uniqueUoms);
-    }
-
-    // 5. Fetch STATE options from project_master
-    const { data: stateData } = await supabase
-      .from("project_master")
-      .select("state")
-      .not("state", "is", null)
-      .not("state", "eq", "");
-    
-    if (stateData && stateData.length > 0) {
-      const uniqueStates = [...new Set(stateData.map(s => s.state))];
-      setStateOptions(uniqueStates);
-    }
-
-    // 6. Fetch DEPARTMENT options from project_master
-    const { data: deptData } = await supabase
-      .from("project_master")
-      .select("department_name")
-      .not("department_name", "is", null)
-      .not("department_name", "eq", "");
-    
-    if (deptData && deptData.length > 0) {
-      const uniqueDepts = [...new Set(deptData.map(d => d.department_name))];
-      setDepartmentOptionsFlat(uniqueDepts);
-    }
-
-    // 7. Fetch ITEM TYPE options from vendor_details_master
-    const { data: itemTypeData } = await supabase
-      .from("vendor_details_master")
-      .select("items_type")
-      .not("items_type", "is", null)
-      .not("items_type", "eq", "");
-    
-    const uniqueItemTypes = [...new Set(itemTypeData?.map(i => i.items_type) || [])];
-    if (uniqueItemTypes.length > 0) {
-      setItemTypeOptions(uniqueItemTypes);
-    }
-
-    // 8. Fetch PACKING DETAIL options from product_master (if column exists, otherwise remove this)
-    // Comment out if packing_type column doesn't exist
-    // const { data: packingData } = await supabase
-    //   .from("product_master")
-    //   .select("packing_type")
-    //   .not("packing_type", "is", null)
-    //   .not("packing_type", "eq", "");
-    // 
-    // if (packingData && packingData.length > 0) {
-    //   const uniquePackings = [...new Set(packingData.map(p => p.packing_type))];
-    //   setPackingDetailOptions(uniquePackings);
-    // }
-
-    // 9. Create state to department mapping from project_master
-    const { data: stateDeptData } = await supabase
-      .from("project_master")
-      .select("state, department_name")
-      .not("state", "is", null)
-      .not("department_name", "is", null);
-    
-    if (stateDeptData && stateDeptData.length > 0) {
-      const mapping: Record<string, string[]> = {};
-      stateDeptData.forEach(item => {
-        if (item.state && item.department_name) {
-          if (!mapping[item.state]) mapping[item.state] = [];
-          if (!mapping[item.state].includes(item.department_name)) {
-            mapping[item.state].push(item.department_name);
+        const vMapping: Record<string, string[]> = {};
+        pmData.forEach(v => {
+          if (v.item_type && v.vendor_name) {
+            if (!vMapping[v.item_type]) vMapping[v.item_type] = [];
+            if (!vMapping[v.item_type].includes(v.vendor_name)) {
+              vMapping[v.item_type].push(v.vendor_name);
+            }
           }
-        }
-      });
-      setStateToDepartments(mapping);
+        });
+        setItemTypeToVendors(vMapping);
+
+        // UOM Options
+        setUomOptions([...new Set(pmData.map(u => u.uom).filter(Boolean))]);
+
+        // State Options
+        setStateOptions([...new Set(pmData.map(s => s.state).filter(Boolean))]);
+
+        // Department Options Flat
+        setDepartmentOptionsFlat([...new Set(pmData.map(d => d.department_name).filter(Boolean))]);
+
+        // Item Type Options
+        setItemTypeOptions([...new Set(pmData.map(i => i.item_type).filter(Boolean))]);
+
+        // Vendor ID Options
+        setVendorIdOptions([...new Set(pmData.map(v => v.vendor_id).filter(Boolean).map(id => String(id)))]);
+
+        // State to Department Mapping
+        const sdMapping: Record<string, string[]> = {};
+        pmData.forEach(item => {
+          if (item.state && item.department_name) {
+            if (!sdMapping[item.state]) sdMapping[item.state] = [];
+            if (!sdMapping[item.state].includes(item.department_name)) {
+              sdMapping[item.state].push(item.department_name);
+            }
+          }
+        });
+        setStateToDepartments(sdMapping);
+
+        // Master Items (Products)
+        setAllMasterItems(
+          pmData
+            .filter(p => p.product_name && p.item_type)
+            .map(p => ({
+              name: p.product_name,
+              group: p.item_type,
+              uom: p.uom || ""
+            }))
+        );
+      }
+
+      setEnhancedMappingsLoaded(true);
+
+    } catch (err) {
+      console.error("Error loading dropdown data:", err);
+      setDropdownError("Failed to load dropdown data");
+    } finally {
+      setDropdownLoading(false);
     }
-
-    // 10. Load master items from product_master - USE CORRECT COLUMN NAME
-    const { data: productData } = await supabase
-      .from("product_master")
-      .select("product_name, item_type, uom")  // Changed from group_head to item_type
-      .not("product_name", "is", null)
-      .not("item_type", "is", null);
-    
-    if (productData) {
-      setAllMasterItems(
-        productData.map(p => ({
-          name: p.product_name,
-          group: p.item_type,  // Changed from group_head to item_type
-          uom: p.uom || ""
-        }))
-      );
-    }
-
-    setEnhancedMappingsLoaded(true);
-
-  } catch (err) {
-    console.error("Error loading dropdown data:", err);
-    setDropdownError("Failed to load dropdown data");
-  } finally {
-    setDropdownLoading(false);
-  }
-};
+  };
 
 
 
@@ -408,15 +349,14 @@ const fetchDropdownData = async () => {
 
 
   useEffect(() => {
-  fetchDropdownData();
-}, []);
-
-
-
-
-  useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
+      if (initialData) {
+        setFormData(initialData.formData);
+        setProducts(initialData.products);
+      } else {
+        resetForm();
+      }
     } else {
       document.body.style.overflow = "unset";
     }
@@ -425,44 +365,44 @@ const fetchDropdownData = async () => {
     return () => {
       document.body.style.overflow = "unset";
     };
-  }, [isOpen]);
+  }, [isOpen, initialData]);
 
   // Dynamic packing detail options based on item type (BOS) - Optimized
-// Dynamic packing detail options based on item type (BOS) - Optimized
-useEffect(() => {
-  if (normalizeStr(formData.itemType) === "bos") {
-    // Set packing options from database or default
-    if (packingDetailOptions.length === 0) {
-      setPackingDetailOptions([
-        "Standard Pack",
-        "Custom Pack",
-        "Bulk Pack",
-        "Individual Pack",
-      ]);
-    }
+  // Dynamic packing detail options based on item type (BOS) - Optimized
+  useEffect(() => {
+    if (normalizeStr(formData.itemType) === "bos") {
+      // Set packing options from database or default
+      if (packingDetailOptions.length === 0) {
+        setPackingDetailOptions([
+          "Standard Pack",
+          "Custom Pack",
+          "Bulk Pack",
+          "Individual Pack",
+        ]);
+      }
 
-    // Start loading products immediately
-    loadBOSProducts();
-  } else {
-    // Reset BOS-specific state when switching away from BOS
-    setPackingDetailOptions([]);
-    setAllProducts([]);
-    setItemData({});
-    setProducts([]);
-    if (formData.packingDetailSelect) {
-      setFormData((prev) => ({ ...prev, packingDetailSelect: "" }));
+      // Start loading products immediately
+      loadBOSProducts();
+    } else {
+      // Reset BOS-specific state when switching away from BOS
+      setPackingDetailOptions([]);
+      setAllProducts([]);
+      setItemData({});
+      setProducts([]);
+      if (formData.packingDetailSelect) {
+        setFormData((prev) => ({ ...prev, packingDetailSelect: "" }));
+      }
     }
-  }
-}, [formData.itemType]);
+  }, [formData.itemType]);
 
 
 
 
   // const loadBOSProducts = async () => {
   //   try {
-  //     // Fetch BOS products from product_master table
+  //     // Fetch BOS products from project_master table
   //     const { data: bosProducts, error } = await supabase
-  //       .from("product_master")
+  //       .from("project_master")
   //       .select("product_name, uom, group_head")
   //       .ilike("group_head", "bos"); // Case-insensitive search for BOS
 
@@ -551,95 +491,95 @@ useEffect(() => {
   // };
 
 
-const loadBOSProducts = async () => {
-  try {
-    // Fetch BOS products from product_master table using item_type column
-    const { data: bosProducts, error } = await supabase
-      .from("product_master")
-      .select("product_name, uom, item_type")  // Changed from group_head to item_type
-      .ilike("item_type", "bos"); // Case-insensitive search for BOS
+  const loadBOSProducts = async () => {
+    try {
+      // Fetch BOS products from project_master table using item_type column
+      const { data: bosProducts, error } = await supabase
+        .from("project_master")
+        .select("product_name, uom, item_type")  // Changed from group_head to item_type
+        .ilike("item_type", "bos"); // Case-insensitive search for BOS
 
-    if (error) throw error;
+      if (error) throw error;
 
-    const fetchedProducts: Product[] = [];
+      const fetchedProducts: Product[] = [];
 
-    if (bosProducts && bosProducts.length > 0) {
-      bosProducts.forEach((product, index) => {
-        fetchedProducts.push({
-          id: `bos-${index}-${Date.now()}`,
-          packingDetail: formData.packingDetailSelect || "Standard Pack",
-          itemName: product.product_name,
-          uom: product.uom || "",
-          qty: 0,
-          qtySet: 1,
-          totalQty: 0,
-          remarks: "",
+      if (bosProducts && bosProducts.length > 0) {
+        bosProducts.forEach((product, index) => {
+          fetchedProducts.push({
+            id: `bos-${index}-${Date.now()}`,
+            packingDetail: formData.packingDetailSelect || "Standard Pack",
+            itemName: product.product_name,
+            uom: product.uom || "",
+            qty: 0,
+            qtySet: 1,
+            totalQty: 0,
+            remarks: "",
+          });
         });
+      }
+
+      setAllProducts(fetchedProducts);
+
+      // Create item data mapping
+      const tempItemData: { [key: string]: { qtySet: number; uom: string } } = {};
+      fetchedProducts.forEach(product => {
+        tempItemData[product.itemName] = {
+          qtySet: product.qtySet,
+          uom: product.uom,
+        };
       });
+      setItemData(tempItemData);
+
+    } catch (err) {
+      console.error("Error loading BOS products:", err);
+      setAllProducts([]);
     }
-
-    setAllProducts(fetchedProducts);
-
-    // Create item data mapping
-    const tempItemData: { [key: string]: { qtySet: number; uom: string } } = {};
-    fetchedProducts.forEach(product => {
-      tempItemData[product.itemName] = {
-        qtySet: product.qtySet,
-        uom: product.uom,
-      };
-    });
-    setItemData(tempItemData);
-
-  } catch (err) {
-    console.error("Error loading BOS products:", err);
-    setAllProducts([]);
-  }
-};
+  };
 
 
 
 
 
   // Load ALL Master Items once (not filtered by item type) - similar to BOS approach
-// Load ALL Master Items once
-useEffect(() => {
-  const loadAllMasterItems = async () => {
-    if (allMasterItems.length > 0) return;
+  // Load ALL Master Items once
+  useEffect(() => {
+    const loadAllMasterItems = async () => {
+      if (allMasterItems.length > 0) return;
 
-    setMasterItemsLoading(true);
-    setMasterItemsError(null);
+      setMasterItemsLoading(true);
+      setMasterItemsError(null);
 
-    try {
-      // Fetch all products from product_master
-      const { data: productData, error } = await supabase
-        .from("product_master")
-        .select("product_name, item_type, uom"); // Changed from group_head to item_type
+      try {
+        // Fetch all products from project_master
+        const { data: productData, error } = await supabase
+          .from("project_master")
+          .select("product_name, item_type, uom"); // Changed from group_head to item_type
 
-      if (error) throw error;
+        if (error) throw error;
 
-      const allItems: { name: string; group: string; uom: string }[] = [];
+        const allItems: { name: string; group: string; uom: string }[] = [];
 
-      productData?.forEach(product => {
-        if (product.product_name && product.item_type) { // Changed from group_head to item_type
-          allItems.push({
-            name: product.product_name,
-            group: product.item_type, // Changed from group_head to item_type
-            uom: product.uom || "",
-          });
-        }
-      });
+        productData?.forEach(product => {
+          if (product.product_name && product.item_type) { // Changed from group_head to item_type
+            allItems.push({
+              name: product.product_name,
+              group: product.item_type, // Changed from group_head to item_type
+              uom: product.uom || "",
+            });
+          }
+        });
 
-      setAllMasterItems(allItems);
-    } catch (error) {
-      console.error("Error loading master items:", error);
-      setMasterItemsError("Failed to load master items");
-    } finally {
-      setMasterItemsLoading(false);
-    }
-  };
+        setAllMasterItems(allItems);
+      } catch (error) {
+        console.error("Error loading master items:", error);
+        setMasterItemsError("Failed to load master items");
+      } finally {
+        setMasterItemsLoading(false);
+      }
+    };
 
-  loadAllMasterItems();
-}, []);
+    loadAllMasterItems();
+  }, []);
 
 
 
@@ -693,22 +633,22 @@ useEffect(() => {
   // };
 
 
-const getFilteredItemsForDropdown = () => {
-  if (normalizeStr(formData.itemType) === "bos") {
-    // For BOS items, filter by item_type = "bos"
-    const bosItems = allMasterItems.filter(
-      (item) => normalizeStr(item.group) === "bos"
-    );
-    
-    return bosItems;
-  } else {
-    // For non-BOS items, filter by item_type
-    const normalizedType = normalizeStr(formData.itemType);
-    return allMasterItems.filter(
-      (item) => normalizeStr(item.group) === normalizedType
-    );
-  }
-};
+  const getFilteredItemsForDropdown = () => {
+    if (normalizeStr(formData.itemType) === "bos") {
+      // For BOS items, filter by item_type = "bos"
+      const bosItems = allMasterItems.filter(
+        (item) => normalizeStr(item.group) === "bos"
+      );
+
+      return bosItems;
+    } else {
+      // For non-BOS items, filter by item_type
+      const normalizedType = normalizeStr(formData.itemType);
+      return allMasterItems.filter(
+        (item) => normalizeStr(item.group) === normalizedType
+      );
+    }
+  };
 
 
 
@@ -849,112 +789,8 @@ const getFilteredItemsForDropdown = () => {
     );
   };
 
-  // Helper to sleep for a duration (used for throttling and backoff)
-  const sleep = (ms: number) =>
-    new Promise((resolve) => setTimeout(resolve, ms));
+  // Remove Google Sheets submission logic as per user request (fully connected to Supabase)
 
-  // Submit a single product with retries and exponential backoff to mitigate Apps Script "System busy" errors
-  const submitProductWithRetry = async (
-    prod: Product,
-    index: number,
-    nextPN: string,
-    startingSerial: number,
-    timestamp: string
-  ): Promise<{
-    success: boolean;
-    index: number;
-    product: string;
-    error?: string;
-  }> => {
-    const maxAttempts = 3;
-    let attempt = 0;
-    let lastError: any = null;
-
-    while (attempt < maxAttempts) {
-      attempt++;
-      try {
-        const totalQty = Number(prod.qty || 0) * Number(prod.qtySet || 1);
-
-        const rowArray = [
-          timestamp, // A: Timestamp
-          nextPN, // B: Planning Number
-          String(startingSerial + index), // C: Serial No
-          formData.date, // D: Date
-          formData.requesterName, // E: Requester Name
-          formData.projectName, // F: Project Name
-          formData.firmName, // G: Firm Name
-          formData.vendorName, // H: Vendor Name
-          formData.itemType, // I: Item Type
-          prod.packingDetail || formData.packingDetailSelect || "", // J: Packing Detail
-          prod.itemName, // K: Item Name
-          prod.uom, // L: UOM
-          String(prod.qty), // M: QTY
-          String(prod.qtySet || 1), // N: QTY/SET
-          String(totalQty), // O: Total QTY
-          prod.remarks || "", // P: Remarks
-          formData.state, // Q: State
-          formData.department, // R: Department
-          "", // S: Empty (reserved)
-          "", // T: Empty (reserved)
-          "", // U: Empty (reserved)
-          "", // V: Status (leave empty so script doesn't set default)
-        ];
-
-        const formData2 = new FormData();
-        formData2.append("action", "insert");
-        formData2.append("sheet", SHEET_NAME);
-        formData2.append("rowData", JSON.stringify(rowArray));
-
-
-        const response = await fetch(SUBMIT_URL, {
-          method: "POST",
-          body: formData2,
-        });
-
-        if (!response.ok) {
-          const text = await response.text().catch(() => "");
-          throw new Error(
-            `HTTP ${response.status}: ${response.statusText} ${text}`.trim()
-          );
-        }
-
-        // Apps Script may return empty body on success
-        try {
-          const result = await response.json();
-          if (result && result.success === false) {
-            throw new Error(result.error || "Server rejected the submission");
-          }
-        } catch (_) {
-          // Ignore JSON parse errors and treat as success
-        }
-
-        // console.log(
-        //   `[Submit] ✅ Product ${index + 1} submitted: ${prod.itemName}`
-        // );
-        return { success: true, index, product: prod.itemName };
-      } catch (err: any) {
-        lastError = err;
-        const message = String(err?.message || err);
-        const retryable = /busy|quota|rate|timeout|429|503/i.test(message);
-        console.warn(
-          `[Submit] ❌ Attempt ${attempt} failed for product ${index + 1}: ${prod.itemName
-          } -> ${message}`
-        );
-        if (!retryable || attempt >= maxAttempts) break;
-        // Exponential backoff with jitter
-        const backoff = Math.min(1500 * Math.pow(2, attempt - 1), 6000);
-        const jitter = Math.floor(Math.random() * 300);
-        await sleep(backoff + jitter);
-      }
-    }
-
-    return {
-      success: false,
-      index,
-      product: prod.itemName,
-      error: lastError instanceof Error ? lastError.message : String(lastError),
-    };
-  };
 
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -981,17 +817,18 @@ const getFilteredItemsForDropdown = () => {
       return;
     }
 
-    if (products.length === 0) {
-      alert("Please add at least one product item.");
+    const productsToSubmit = products.filter(p => Number(p.qty) > 0);
+
+    if (productsToSubmit.length === 0) {
+      alert("Please add at least one product item with a quantity greater than 0.");
       return;
     }
 
-    const invalidProducts = products.filter(
+    const invalidProducts = productsToSubmit.filter(
       (p) =>
         !p.itemName?.trim() ||
         !p.uom?.trim() ||
-        isNaN(Number(p.qty)) ||
-        Number(p.qty) <= 0
+        isNaN(Number(p.qty))
     );
 
     if (invalidProducts.length > 0) {
@@ -1004,62 +841,80 @@ const getFilteredItemsForDropdown = () => {
     setIsLoading(true);
 
     try {
+      let nextPN = initialData?.planningNo || "PN-01";
 
-      // ---------- PLANNING NUMBER GENERATION ----------
-      let nextPN = "PN-01";
+      if (!initialData) {
+        // ---------- PLANNING NUMBER GENERATION ----------
+        const { data: existing } = await supabase
+          .from("planning_master")
+          .select("planning_no");
 
-      const { data: existing } = await supabase
-        .from("indent")
-        .select("planning_number");
-
-      if (existing && existing.length > 0) {
-        let max = 0;
-
-        existing.forEach((r: any) => {
-          const pn = r.planning_number || "";
-          const match = pn.match(/PN-(\d+)/);
-          if (match) {
-            const num = parseInt(match[1]);
-            if (num > max) max = num;
-          }
-        });
-
-        nextPN = "PN-" + String(max + 1).padStart(2, "0");
+        if (existing && existing.length > 0) {
+          let max = 0;
+          existing.forEach((r: any) => {
+            const pn = r.planning_no || "";
+            const match = pn.match(/PN-(\d+)/);
+            if (match) {
+              const num = parseInt(match[1]);
+              if (num > max) max = num;
+            }
+          });
+          nextPN = "PN-" + String(max + 1).padStart(2, "0");
+        }
       }
 
-      const startingSerial = 1;
+      const masterRow = {
+        planning_no: nextPN,
+        date: formData.date,
+        requester_name: formData.requesterName,
+        project: formData.projectName,
+        firm: formData.firmName,
+        vendor_name: formData.vendorName,
+        vendor_id: formData.vendorId,
+        item_type: formData.itemType,
+        state: formData.state,
+        department: formData.department,
+        approved_status: "Pending"
+      };
+
+      if (initialData) {
+        const { error: masterError } = await supabase
+          .from("planning_master")
+          .update(masterRow)
+          .eq("planning_no", nextPN);
+        if (masterError) throw masterError;
+
+        // For updates, delete old items first
+        const { error: deleteError } = await supabase
+          .from("planning_item_master")
+          .delete()
+          .eq("planning_no", nextPN);
+        if (deleteError) throw deleteError;
+      } else {
+        const { error: masterError } = await supabase
+          .from("planning_master")
+          .insert([masterRow]);
+        if (masterError) throw masterError;
+      }
 
       // ---------- INSERT PRODUCTS ----------
-      const rows = products.map((prod, index) => {
-
+      const itemRows = productsToSubmit.map((prod) => {
         const totalQty = Number(prod.qty || 0) * Number(prod.qtySet || 1);
 
         return {
-          planning_number: nextPN,
-          serial_no: startingSerial + index,
-          date: formData.date,
-          requester_name: formData.requesterName,
-          project_name: formData.projectName,
-          firm_name: formData.firmName,
-          vendor_name: formData.vendorName,
-          item_type: formData.itemType,
-          item_name: prod.itemName,
-          uom: prod.uom,
-          qty: prod.qty,
-          qty_per_set: prod.qtySet || 1,
-          total_qty: totalQty,
-          remarks: prod.remarks || "",
-          state: formData.state,
-          department: formData.department,
+          planning_no: nextPN,
+          item: prod.itemName,
+          qty: totalQty,
+          description: prod.remarks || "", // mapped to frontend 'Remark' field
+          uom: prod.uom || ""             // mapped to the new 'UOM' column
         };
-
       });
 
-      const { error } = await supabase
-        .from("indent")
-        .insert(rows);
+      const { error: itemError } = await supabase
+        .from("planning_item_master")
+        .insert(itemRows);
 
-      if (error) throw error;
+      if (itemError) throw itemError;
 
       // ---------- SUCCESS FLOW (UNCHANGED) ----------
       setShowSuccess(true);
@@ -1100,6 +955,7 @@ const getFilteredItemsForDropdown = () => {
       department: "",
       packingDetailSelect: "",
       masterQuantity: "",
+      vendorId: "",
     });
     setProducts([]);
   };
@@ -1151,60 +1007,60 @@ const getFilteredItemsForDropdown = () => {
 
 
   const getVendorOptions = () => {
-  // Filter vendors based on selected item type
-  if (!formData.itemType) {
+    // Filter vendors based on selected item type
+    if (!formData.itemType) {
+      return [...new Set(vendorOptionsFlat)]; // Remove duplicates
+    }
+
+    const normalizedItemType = normalizeStr(formData.itemType);
+
+    // Try exact match first
+    if (itemTypeToVendors[formData.itemType]) {
+      return [...new Set(itemTypeToVendors[formData.itemType])]; // Remove duplicates
+    }
+
+    // Try uppercase match (BOS, CABLE, etc.)
+    const upperItemType = formData.itemType.toUpperCase();
+    if (itemTypeToVendors[upperItemType]) {
+      return [...new Set(itemTypeToVendors[upperItemType])]; // Remove duplicates
+    }
+
+    // Try normalized match
+    const matchingKey = Object.keys(itemTypeToVendors).find(
+      (key) => normalizeStr(key) === normalizedItemType
+    );
+
+    if (matchingKey && itemTypeToVendors[matchingKey]) {
+      return [...new Set(itemTypeToVendors[matchingKey])]; // Remove duplicates
+    }
+
+    // Fallback to all vendors
     return [...new Set(vendorOptionsFlat)]; // Remove duplicates
-  }
-
-  const normalizedItemType = normalizeStr(formData.itemType);
-
-  // Try exact match first
-  if (itemTypeToVendors[formData.itemType]) {
-    return [...new Set(itemTypeToVendors[formData.itemType])]; // Remove duplicates
-  }
-
-  // Try uppercase match (BOS, CABLE, etc.)
-  const upperItemType = formData.itemType.toUpperCase();
-  if (itemTypeToVendors[upperItemType]) {
-    return [...new Set(itemTypeToVendors[upperItemType])]; // Remove duplicates
-  }
-
-  // Try normalized match
-  const matchingKey = Object.keys(itemTypeToVendors).find(
-    (key) => normalizeStr(key) === normalizedItemType
-  );
-
-  if (matchingKey && itemTypeToVendors[matchingKey]) {
-    return [...new Set(itemTypeToVendors[matchingKey])]; // Remove duplicates
-  }
-
-  // Fallback to all vendors
-  return [...new Set(vendorOptionsFlat)]; // Remove duplicates
-};
+  };
 
 
 
 
-//   const getDepartmentOptions = () => {
-//   // Filter departments based on selected state from dynamic mapping
-//   if (formData.state && stateToDepartments[formData.state]) {
-//     const filtered = Array.from(new Set(stateToDepartments[formData.state]));
-//     return filtered.length > 0 ? filtered : departmentOptionsFlat;
-//   }
-//   // If no state selected or no mapping available, return all departments
-//   return departmentOptionsFlat;
-// };
+  //   const getDepartmentOptions = () => {
+  //   // Filter departments based on selected state from dynamic mapping
+  //   if (formData.state && stateToDepartments[formData.state]) {
+  //     const filtered = Array.from(new Set(stateToDepartments[formData.state]));
+  //     return filtered.length > 0 ? filtered : departmentOptionsFlat;
+  //   }
+  //   // If no state selected or no mapping available, return all departments
+  //   return departmentOptionsFlat;
+  // };
 
 
-const getDepartmentOptions = () => {
-  // Filter departments based on selected state from dynamic mapping
-  if (formData.state && stateToDepartments[formData.state]) {
-    const filtered = [...new Set(stateToDepartments[formData.state])]; // Remove duplicates
-    return filtered.length > 0 ? filtered : departmentOptionsFlat;
-  }
-  // If no state selected or no mapping available, return all departments
-  return [...new Set(departmentOptionsFlat)]; // Remove duplicates
-};
+  const getDepartmentOptions = () => {
+    // Filter departments based on selected state from dynamic mapping
+    if (formData.state && stateToDepartments[formData.state]) {
+      const filtered = [...new Set(stateToDepartments[formData.state])]; // Remove duplicates
+      return filtered.length > 0 ? filtered : departmentOptionsFlat;
+    }
+    // If no state selected or no mapping available, return all departments
+    return [...new Set(departmentOptionsFlat)]; // Remove duplicates
+  };
 
 
 
@@ -1250,7 +1106,7 @@ const getDepartmentOptions = () => {
                 </div>
                 <div>
                   <h2 className="text-xl font-bold text-white">
-                    New Planning Request
+                    {initialData ? "Edit Planning Request" : "New Planning Request"}
                   </h2>
                   <p className="text-sm text-blue-100">
                     Fill in the details for your procurement planning
@@ -1365,6 +1221,29 @@ const getDepartmentOptions = () => {
                         {dropdownLoading ? "Loading…" : "Select Firm"}
                       </option>
                       {firmOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block mb-2 text-sm font-medium text-gray-700">
+                      Vendor ID
+                    </label>
+                    <select
+                      value={formData.vendorId}
+                      onChange={(e) =>
+                        handleFormDataChange("vendorId", e.target.value)
+                      }
+                      className="px-3 py-2 w-full rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      disabled={dropdownLoading}
+                    >
+                      <option value="">
+                        {dropdownLoading ? "Loading…" : "Select Vendor ID"}
+                      </option>
+                      {vendorIdOptions.map((option) => (
                         <option key={option} value={option}>
                           {option}
                         </option>
@@ -1587,7 +1466,7 @@ const getDepartmentOptions = () => {
                           <th className="px-4 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
                             Qty
                           </th>
-                        
+
                           <th className="px-4 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
                             Total Qty
                           </th>

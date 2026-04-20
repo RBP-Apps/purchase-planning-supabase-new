@@ -25,51 +25,28 @@ const Login = () => {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
 const pages = user.page_access || [];
 
-if (pages.includes("all")) {
+if (pages.includes("all") || pages.map((p: string) => p.toLowerCase()).includes("all")) {
   navigate("/dashboard");
   return;
 }
 
-  
-  
-  const mainPages = [
-  "Dashboard",
-  "Planning",
-  "Approval",
-  "PO Generator",
-  "PO History",
-  "Received",
-  "Payment",
-  "Payment History",
-  "License",
-  "Report",
-  "UserPage"
-];
+  const normalizedPages = pages.map((p: string) => p.toLowerCase());
 
+  let firstPage = "/dashboard"; // Default
 
-  let firstPage = "";
-  for (let key of mainPages) {
-    if (pages.includes(key)) {
-      firstPage = key;
-      break;
-    }
-  }
+  // Check aliases matching Sidebar
+  if (normalizedPages.includes("dashboard")) firstPage = "/dashboard";
+  else if (normalizedPages.includes("planning")) firstPage = "/planning";
+  else if (normalizedPages.includes("approval")) firstPage = "/approval";
+  else if (normalizedPages.includes("po")) firstPage = "/po-generator";
+  else if (normalizedPages.includes("receipt") || normalizedPages.includes("received")) firstPage = "/received";
+  else if (normalizedPages.includes("payment")) firstPage = "/payment";
+  else if (normalizedPages.includes("report")) firstPage = "/report";
+  else if (normalizedPages.includes("users") || normalizedPages.includes("userpage")) firstPage = "/users";
+  else if (normalizedPages.includes("setting") || normalizedPages.includes("settings") || normalizedPages.includes("seting")) firstPage = "/setting";
+  else if (normalizedPages.includes("license")) firstPage = "/license";
 
-const routeMap: Record<string, string> = {
-  "Dashboard": "/dashboard",
-  "Planning": "/planning",
-  "Approval": "/approval",
-  "PO Generator": "/po-generator",
-  "PO History": "/po-history",
-  "Received": "/received",
-  "Payment": "/payment",
-  "Payment History": "/payment-history",
-  "License": "/license",
-  "Report": "/report",
-  "UserPage": "/users"
-};
-
-  navigate(routeMap[firstPage] || '/dashboard');
+  navigate(firstPage);
 } else {
       setError('Invalid username or password');
     }

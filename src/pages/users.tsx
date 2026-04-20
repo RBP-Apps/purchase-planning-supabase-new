@@ -32,12 +32,6 @@ export default function UserManagement() {
   });
 
   const [editUserId, setEditUserId] = useState<number | null>(null);
-  const [editData, setEditData] = useState<any>({
-    username: "",
-    password: "",
-    role: "USER",
-    page: "",
-  });
 
 
   const [pageOpen, setPageOpen] = useState(false);
@@ -56,49 +50,23 @@ const ALL_PAGES = [
   "Payment History",
   "License",
   "Report",
-  "UserPage"
+  "UserPage",
+  "Setting"
 ];
 
   const handleEdit = (user: any) => {
     setEditUserId(user.id);
-    setEditData({
+    setFormData({
       username: user.username,
+      email: user.email,
       password: user.password,
-      role: user.role,
+      role: user.role.toUpperCase(),
       page: user.page,
     });
-  };
-
-  const handleEditChange = (e: any) => {
-    setEditData({ ...editData, [e.target.name]: e.target.value });
+    setOpen(true);
   };
 
 
-  const handleUpdate = async (id: number) => {
-    try {
-      const editPayload = {
-  username: editData.username,
-  password: editData.password,
-  role: editData.role.toLowerCase(),
-  page_access:
-    editData.page === "all"
-      ? ["all"]
-      : editData.page.split(",").filter(Boolean),
-};
-
-const { error } = await supabase
-  .from("Login")
-  .update(editPayload)
-  .eq("id", id);
-
-      if (error) throw error;
-
-      setEditUserId(null);
-      fetchUsers();
-    } catch (err) {
-      console.error(err);
-    }
-  }
 
 
   // -------------------- HANDLERS --------------------
@@ -138,25 +106,36 @@ const { error } = await supabase
 
     try {
       const payload = {
-  username: formData.username,
-  email: formData.email,
-  password: formData.password,
-  role: formData.role.toLowerCase(),
-  whatsapp: "",
-  page_access:
-    formData.page === "all"
-      ? ["all"]
-      : formData.page.split(",").filter(Boolean),
-};
+        username: formData.username,
+        email: formData.email,
+        password: formData.password,
+        role: formData.role.toLowerCase(),
+        whatsapp: "",
+        page_access:
+          formData.page === "all"
+            ? ["all"]
+            : formData.page.split(",").filter(Boolean),
+      };
 
-      const { error } = await supabase
-  .from("Login")
-  .insert([payload]);
+      if (editUserId) {
+        // Update existing user
+        const { error } = await supabase
+          .from("Login")
+          .update(payload)
+          .eq("id", editUserId);
+        if (error) throw error;
+        setMessage("User updated successfully");
+      } else {
+        // Insert new user
+        const { error } = await supabase
+          .from("Login")
+          .insert([payload]);
+        if (error) throw error;
+        setMessage("User created successfully");
+      }
 
-      if (error) throw error;
-
-      setMessage("User created successfully");
       setOpen(false);
+      setEditUserId(null);
       fetchUsers();
 
       setFormData({
@@ -198,7 +177,17 @@ const { error } = await supabase
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold text-gray-800">Add User</h1>
         <button
-          onClick={() => setOpen(true)}
+          onClick={() => {
+            setEditUserId(null);
+            setFormData({
+              username: "",
+              email: "",
+              password: "",
+              role: "USER",
+              page: "",
+            });
+            setOpen(true);
+          }}
           className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-5 py-2 rounded-lg shadow hover:opacity-90"
         >
           + Add User
@@ -226,98 +215,26 @@ const { error } = await supabase
             {users.map((u) => (
               <tr key={u.id} className="border-b hover:bg-gray-50">
                 <td className="p-3 text-center space-x-3">
-                  {editUserId === u.id ? (
-                    <>
-                      <button
-                        onClick={() => handleUpdate(u.id)}
-                        className="text-green-600 inline-flex items-center gap-1"
-                      >
-                        <FaSave /> <span>Save</span>
-                      </button>
+                  <button
+                    onClick={() => handleEdit(u)}
+                    className="text-blue-600 inline-flex items-center gap-1"
+                  >
+                    <FaEdit /> <span>Edit</span>
+                  </button>
 
-                      <button
-                        onClick={() => setEditUserId(null)}
-                        className="text-gray-600 inline-flex items-center gap-1"
-                      >
-                        <FaTimes /> <span>Cancel</span>
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        onClick={() => handleEdit(u)}
-                        className="text-blue-600 inline-flex items-center gap-1"
-                      >
-                        <FaEdit /> <span>Edit</span>
-                      </button>
-
-                      <button
-                        onClick={() => handleDelete(u.id)}
-                        className="text-red-600 inline-flex items-center gap-1"
-                      >
-                        <FaTrash /> <span>Delete</span>
-                      </button>
-                    </>
-                  )}
+                  <button
+                    onClick={() => handleDelete(u.id)}
+                    className="text-red-600 inline-flex items-center gap-1"
+                  >
+                    <FaTrash /> <span>Delete</span>
+                  </button>
                 </td>
 
-
-                <td className="p-3 text-center">
-                  {editUserId === u.id ? (
-                    <input
-                      name="username"
-                      value={editData.username}
-                      onChange={handleEditChange}
-                      className="border px-2 py-1 rounded w-full"
-                    />
-                  ) : (
-                    u.username
-                  )}
-                </td>
-                <td className="p-3 text-center">
-                  {editUserId === u.id ? (
-                    <input
-                      name="password"
-                      value={editData.password}
-                      onChange={handleEditChange}
-                      className="border px-2 py-1 rounded w-full"
-                    />
-                  ) : (
-                    u.password
-                  )}
-                </td>
-
-
+                <td className="p-3 text-center">{u.username}</td>
+                <td className="p-3 text-center">{u.password}</td>
                 <td className="p-3 text-center">{u.email}</td>
-
-                <td className="p-3 text-center">
-                  {editUserId === u.id ? (
-                    <select
-                      name="role"
-                      value={editData.role}
-                      onChange={handleEditChange}
-                      className="border px-2 py-1 rounded"
-                    >
-                      <option value="user">User</option>
-<option value="admin">Admin</option>
-                    </select>
-                  ) : (
-                    u.role
-                  )}
-                </td>
-
-                <td className="p-3 text-center">
-                  {editUserId === u.id ? (
-                    <input
-                      name="page"
-                      value={editData.page}
-                      onChange={handleEditChange}
-                      className="border px-2 py-1 rounded w-full"
-                    />
-                  ) : (
-                    u.page
-                  )}
-                </td>
+                <td className="p-3 text-center">{u.role}</td>
+                <td className="p-3 text-center">{u.page}</td>
               </tr>
             ))}
           </tbody>
@@ -382,7 +299,7 @@ const { error } = await supabase
 
             <div className="px-6 py-4 border-b">
               <h2 className="text-xl font-bold text-center text-blue-600">
-                Add User
+                {editUserId ? "Edit User" : "Add User"}
               </h2>
             </div>
 
@@ -530,7 +447,10 @@ const { error } = await supabase
 
               <button
                 type="button"
-                onClick={() => setOpen(false)}
+                onClick={() => {
+                  setOpen(false);
+                  setEditUserId(null);
+                }}
                 className="flex-1 bg-gray-200 py-2 rounded-lg hover:bg-gray-300"
               >
                 Cancel

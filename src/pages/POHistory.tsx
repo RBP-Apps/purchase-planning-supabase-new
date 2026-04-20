@@ -33,49 +33,98 @@ const loadRows = async () => {
   setError(null);
 
   try {
+    // 1. Fetch purchase order master records
     const { data, error } = await supabase
-      .from("po")
+      .from("purchase_order_master")
       .select("*")
-      .order("timestamp", { ascending: false });
+      .order("created_at", { ascending: false });
 
     if (error) throw error;
 
-    const transformedData = (data || []).map((r: any, index: number) => ({
-      id: r.id,
-      timestamp: r.timestamp,
-      planningNo: r.planning_no,
-      serialNo: r.serial_no,
-      poNO: r.po_no,
-      poDate: r.po_date,
-      quotationNo: r.quotation_no,
-      vendoreName: r.vendor_name,
-      itemName: r.item_name,
-      qty: r.qty,
-      rate: r.rate,
-      gst: r.gst_percent,
-      discount: r.discount,
-      grandTotalAmount: r.grand_total,
-      poCopy: r.po_copy,
-      projectName: r.project,
-      firmName: r.firm_name,
-     poStatus: r.status || "",
-      poRemarks: r.remarks,
-      poSignatureImage: r.po_signature_image,
-      receivingQuantity: r.receiving_qty,
-      balance: r.balance,
-      receivingStatus: r.receiving_status,
-      planned1: r.planned,
-      actual1: r.actual,
-      delay1: r.delay,
-      paymentStatus: r.payment_status,
-      paymentMode: r.payment_mode,
-      amount: r.amount,
-      reason: r.reason,
-      refNo: r.ref_no,
-      pendingAmount: r.pending_amount,
-      deduction: r.deduction,
-      totalPayment: r.total_payment,
-    }));
+    const masterData = data || [];
+
+    // 2. Fetch item data from po_item_master for all po_ids
+    const poIds = masterData.map((r: any) => r.po_id).filter(Boolean);
+    let itemMap: Record<string, { itemNames: string[]; qtys: number[] }> = {};
+
+    if (poIds.length > 0) {
+      const { data: itemData, error: itemError } = await supabase
+        .from("po_item_master")
+        .select("po_id, item, qty")
+        .in("po_id", poIds);
+
+      if (!itemError && itemData) {
+        itemData.forEach((item: any) => {
+          if (!itemMap[item.po_id]) {
+            itemMap[item.po_id] = { itemNames: [], qtys: [] };
+          }
+          if (item.item) itemMap[item.po_id].itemNames.push(item.item);
+          if (item.qty != null) itemMap[item.po_id].qtys.push(item.qty);
+        });
+      }
+    }
+
+    // 3. Fetch firm names from planning_master for all planning_nos
+    const planningNos = masterData.map((r: any) => r.planning_no).filter(Boolean);
+    let firmMap: Record<string, string> = {};
+
+    if (planningNos.length > 0) {
+      const { data: planningData, error: planningError } = await supabase
+        .from("planning_master")
+        .select("planning_no, firm")
+        .in("planning_no", planningNos);
+
+      if (!planningError && planningData) {
+        planningData.forEach((p: any) => {
+          if (p.planning_no && p.firm) {
+            firmMap[p.planning_no] = p.firm;
+          }
+        });
+      }
+    }
+
+    // 4. Merge all data together
+    const transformedData = masterData.map((r: any) => {
+      const poItems = itemMap[r.po_id] || { itemNames: [], qtys: [] };
+      const totalQty = poItems.qtys.reduce((sum: number, q: number) => sum + q, 0);
+
+      return {
+        id: r.id,
+        timestamp: r.created_at,
+        planningNo: r.planning_no,
+        serialNo: r.serial_no,
+        poNO: r.po_id,
+        poDate: r.po_date,
+        quotationNo: r.quotation_no,
+        vendoreName: r.vendor_name,
+        vendorId: r.vendor_id,
+        itemName: poItems.itemNames.join(", ") || r.item_name || "",
+        qty: totalQty || r.qty || "",
+        rate: r.rate,
+        gst: r.gst_percent,
+        discount: r.discount,
+        grandTotalAmount: r.grand_total || r.net_po_amount,
+        poCopy: r.po_copy,
+        projectName: r.project,
+        firmName: firmMap[r.planning_no] || r.firm_name || "",
+        poStatus: r.status || "",
+        poRemarks: r.user_remarks,
+        poSignatureImage: r.upload_file,
+        receivingQuantity: r.receiving_qty,
+        balance: r.balance,
+        receivingStatus: r.receiving_status,
+        planned1: r.planned,
+        delay1: r.delay,
+        paymentStatus: r.payment_status,
+        paymentMode: r.payment_mode,
+        amount: r.net_amount,
+        reason: r.reason,
+        refNo: r.ref_no,
+        pendingAmount: r.pending_amount,
+        deduction: r.deduction,
+        totalPayment: r.total_payment,
+      };
+    });
 
     setRows(transformedData);
   } catch (e: any) {
@@ -122,10 +171,10 @@ const loadRows = async () => {
 
   // Separate pending and history based on status
   const pendingData = groupByPlanningNo(
-    rows.filter((item) => item.poStatus === "")
+    rows.filter((item) => !item.poStatus || item.poStatus.toLowerCase() === "pending")
   );
   const historyData = groupByPlanningNo(
-    rows.filter((item) => item.poStatus !== "")
+    rows.filter((item) => item.poStatus === "Approved" || item.poStatus === "Rejected")
   );
 
   // console.log("pendingData",pendingData);
@@ -193,13 +242,13 @@ const uploadFile = async (file: File): Promise<string> => {
   const filePath = `po/${Date.now()}_${file.name}`;   // 👈 IMPORTANT
 
   const { error } = await supabase.storage
-    .from("po-pdf")
+    .from("po_generator")
     .upload(filePath, file);
 
   if (error) throw error;
 
   const { data } = supabase.storage
-    .from("po-pdf")
+    .from("po_generator")
     .getPublicUrl(filePath);
 
   return data.publicUrl;
@@ -212,14 +261,13 @@ const uploadFile = async (file: File): Promise<string> => {
 ) => {
   try {
     const { error } = await supabase
-      .from("po")
+      .from("purchase_order_master")
       .update({
         status: newStatus,
-        remarks: item.userRemarks || "",
-        po_signature_image: fileUrl,
-        actual: new Date(),
+        user_remarks: item.userRemarks || "",
+        upload_file: fileUrl,
       })
-      .eq("id", item.id);
+      .eq("planning_no", item.planningNo);
 
     if (error) throw error;
   } catch (e) {
@@ -263,8 +311,8 @@ const uploadFile = async (file: File): Promise<string> => {
           ? {
             ...r,
             poStatus: newStatus,
+            poRemarks: item.userRemarks || "",
             fileUrl: fileUrl,
-            actual1: new Date().toLocaleDateString("en-US"), // Add approval date
           }
           : r
       );
@@ -487,6 +535,9 @@ const uploadFile = async (file: File): Promise<string> => {
                 </th>
 
                 <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
+                  Vendor ID
+                </th>
+                <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
                   Vendor Name
                 </th>
 
@@ -629,6 +680,10 @@ const uploadFile = async (file: File): Promise<string> => {
                     {item.planningNo}
                   </td>
 
+                  <td className="px-6 py-4 text-sm whitespace-nowrap">
+                    {item.vendorId || "-"}
+                  </td>
+
                   <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap">
                     {item.vendoreName}
                   </td>
@@ -644,7 +699,7 @@ const uploadFile = async (file: File): Promise<string> => {
                     {item.serialNumber}
                   </td> */}
                   <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap">
-                    {formatDateToDDMMYYYY(item.Date)}
+                    {formatDateToDDMMYYYY(item.timestamp)}
                   </td>
                   {/* <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap">
                     {item.requesterName}
