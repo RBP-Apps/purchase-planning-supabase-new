@@ -90,6 +90,7 @@ const PlanningForm: React.FC<PlanningFormProps> = ({
 
 
   const [itemTypeOptions, setItemTypeOptions] = useState<string[]>([]);
+  const [vendorNameToId, setVendorNameToId] = useState<Record<string, string>>({});
   const [dropdownLoading, setDropdownLoading] = useState<boolean>(false);
   const [dropdownError, setDropdownError] = useState<string | null>(null);
 
@@ -279,6 +280,14 @@ const PlanningForm: React.FC<PlanningFormProps> = ({
         // Vendor Options & Item Type Mapping
         const vendors = [...new Set(pmData.map(v => v.vendor_name).filter(Boolean))];
         setVendorOptionsFlat(vendors);
+
+        const mapping: Record<string, string> = {};
+        pmData.forEach(v => {
+          if (v.vendor_name && v.vendor_id) {
+            mapping[v.vendor_name] = String(v.vendor_id);
+          }
+        });
+        setVendorNameToId(mapping);
 
         const vMapping: Record<string, string[]> = {};
         pmData.forEach(v => {
@@ -1228,7 +1237,8 @@ const PlanningForm: React.FC<PlanningFormProps> = ({
                     </select>
                   </div>
 
-                  <div>
+                  {/* Vendor ID hidden as per user request */}
+                  <div className="hidden">
                     <label className="block mb-2 text-sm font-medium text-gray-700">
                       Vendor ID
                     </label>
@@ -1283,9 +1293,15 @@ const PlanningForm: React.FC<PlanningFormProps> = ({
 
                     <select
                       value={formData.vendorName}
-                      onChange={(e) =>
-                        handleFormDataChange("vendorName", e.target.value)
-                      }
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        handleFormDataChange("vendorName", val);
+                        if (vendorNameToId[val]) {
+                          handleFormDataChange("vendorId", vendorNameToId[val]);
+                        } else {
+                          handleFormDataChange("vendorId", "");
+                        }
+                      }}
                       className="px-3 py-2 w-full rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       disabled={dropdownLoading}
                       required

@@ -96,19 +96,30 @@ const POList = () => {
   const validateForm = (formData: POItem) => {
     const errors: Record<string, string> = {};
 
-    // Validate numeric fields are positive numbers
-    const numericFields = [
-      "Qty",
-      "Received Qty",
-      "Rate"
-    ];
+    const receivedQty = Number(formData["Received Qty"]) || 0;
+
+    // If item is being received, Rate and GST % are required
+    if (receivedQty > 0) {
+      if (formData.Rate === undefined || formData.Rate === null || formData.Rate === "" || Number(formData.Rate) <= 0) {
+        errors["Rate"] = "Required";
+      }
+      
+      const gstValue = formData["GST %"];
+      if (gstValue === undefined || gstValue === null || gstValue === "" || isNaN(Number(gstValue))) {
+        errors["GST %"] = "Required";
+      }
+    }
+
+    // Validate numeric fields are non-negative
+    const numericFields = ["Qty", "Received Qty", "Rate"];
     numericFields.forEach((field) => {
       const value = formData[field as keyof POItem];
-      // Only validate as positive number if the value is provided/exists.
-      // Received Qty might be 0, which is fine, but checking for null/undefined if it's a required field.
       if (
-        value !== undefined && value !== null && value !== "" &&
-        (typeof value === "number" && value < 0)
+        value !== undefined &&
+        value !== null &&
+        value !== "" &&
+        typeof value === "number" &&
+        value < 0
       ) {
         errors[field] = "Must be a positive number";
       }
@@ -151,6 +162,24 @@ const POList = () => {
 
     if (!selectedGroup || groupItems.length === 0) return;
 
+    // Validate top-level billing fields
+    if (!billStatus) {
+      alert("Please select Bill Type.");
+      return;
+    }
+    if (!billNo.trim()) {
+      alert("Please enter Bill No.");
+      return;
+    }
+    if (!billDate) {
+      alert("Please enter Bill Date.");
+      return;
+    }
+    if (!billAmount || Number(billAmount) <= 0) {
+      alert("Please enter Bill Amount.");
+      return;
+    }
+
     // Filter items tracking changes. Only submit items that have something being received.
     const itemsToSubmit = groupItems.filter(item => (Number(item["Received Qty"]) || 0) > 0);
 
@@ -159,7 +188,7 @@ const POList = () => {
       return;
     }
 
-    // Validate all items in the group
+    // Validate all items and identify submission errors
     let hasErrors = false;
     const allErrors: Record<string, string> = {};
 
@@ -175,7 +204,7 @@ const POList = () => {
 
     setFormErrors(allErrors);
     if (hasErrors) {
-      alert("Validation failed. Please check the form errors.");
+      alert("Required: Please enter Rate and GST % for all items having a Received Qty.");
       return;
     }
 
@@ -324,9 +353,9 @@ const POList = () => {
       if (updatedItems[itemIndex]) {
         // For numeric fields, convert to number if not empty, otherwise set to null
         const isNumericField =
-          field.includes("Amount") || field.includes("Qty") || field === "Rate";
+          field.includes("Amount") || field.includes("Qty") || field === "Rate" || field === "GST %";
         const numericValue =
-          isNumericField && value !== "" ? Number(value) || null : value;
+          isNumericField && value !== "" ? Number(value) : value;
 
         // Validation: Received Qty cannot exceed available balance (shown in Qty)
         if (field === "Received Qty") {
@@ -1453,7 +1482,7 @@ const POList = () => {
                                   <td className="px-2 py-2 whitespace-nowrap sm:px-4 sm:py-3">
                                     <input
                                       type="number"
-                                      value={item["Rate"] || ""}
+                                      value={item["Rate"] !== undefined && item["Rate"] !== null ? item["Rate"] : ""}
                                       onChange={(e) =>
                                         handleFieldChange(
                                           "Rate",
@@ -1461,17 +1490,24 @@ const POList = () => {
                                           itemIndex
                                         )
                                       }
-                                      className="block px-2 py-1 w-20 text-xs border border-gray-300 rounded sm:px-3 sm:py-2 sm:w-32 sm:text-sm"
+                                      className={`block px-2 py-1 w-20 text-xs border rounded sm:px-3 sm:py-2 sm:w-32 sm:text-sm ${
+                                        formErrors[`Rate-${itemIndex}`] ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-300'
+                                      }`}
                                       min="0"
                                       step="0.01"
                                     />
+                                    {formErrors[`Rate-${itemIndex}`] && (
+                                      <p className="mt-1 text-[10px] text-red-600 font-medium text-center">
+                                        Required
+                                      </p>
+                                    )}
                                   </td>
 
                                   {/* Make GST editable */}
                                   <td className="px-2 py-2 whitespace-nowrap sm:px-4 sm:py-3">
                                     <input
                                       type="number"
-                                      value={item["GST %"] || ""}
+                                      value={item["GST %"] !== undefined && item["GST %"] !== null ? item["GST %"] : ""}
                                       onChange={(e) =>
                                         handleFieldChange(
                                           "GST %",
@@ -1479,17 +1515,24 @@ const POList = () => {
                                           itemIndex
                                         )
                                       }
-                                      className="block px-2 py-1 w-20 text-xs border border-gray-300 rounded sm:px-3 sm:py-2 sm:w-32 sm:text-sm"
+                                      className={`block px-2 py-1 w-20 text-xs border rounded sm:px-3 sm:py-2 sm:w-32 sm:text-sm ${
+                                        formErrors[`GST %-${itemIndex}`] ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-300'
+                                      }`}
                                       min="0"
                                       max="100"
                                     />
+                                    {formErrors[`GST %-${itemIndex}`] && (
+                                      <p className="mt-1 text-[10px] text-red-600 font-medium text-center">
+                                        Required
+                                      </p>
+                                    )}
                                   </td>
 
                                   {/* Make Discount editable */}
                                   <td className="px-2 py-2 whitespace-nowrap sm:px-4 sm:py-3">
                                     <input
                                       type="number"
-                                      value={item["Discount"] || ""}
+                                      value={item["Discount"] !== undefined && item["Discount"] !== null ? item["Discount"] : ""}
                                       onChange={(e) =>
                                         handleFieldChange(
                                           "Discount",
