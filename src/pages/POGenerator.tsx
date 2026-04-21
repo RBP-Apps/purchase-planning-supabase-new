@@ -87,7 +87,7 @@ const POGenerator = () => {
 
 
   const [preparedBy, setPreparedBy] = useState("");
-const [approvedBy, setApprovedBy] = useState("");
+  const [approvedBy, setApprovedBy] = useState("");
 
   // console.log("selectedFirm", selectedFirm);
   // Maps for fast lookup
@@ -172,15 +172,15 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
 
 
   // Generic sheet fetcher
- const fetchSheet = async (table: string) => {
-  const { data, error } = await supabase
-    .from(table)
-    .select("*");
+  const fetchSheet = async (table: string) => {
+    const { data, error } = await supabase
+      .from(table)
+      .select("*");
 
-  if (error) throw error;
+    if (error) throw error;
 
-  return data || [];
-};
+    return data || [];
+  };
 
   // Load planning_master options and planning->vendor map
   useEffect(() => {
@@ -188,13 +188,16 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
       setLoadingIndents(true);
       setError(null);
       try {
+        console.log("Loading Indents...");
         // 1. Fetch only Approved planning_nos from planning_item_master
         const { data: approvedItems, error: itemsError } = await supabase
-          .from("planning_item_master")
+          .from("planning_master")
           .select("planning_no")
           .eq("status", "Approved");
 
         if (itemsError) throw itemsError;
+        
+        console.log("1. Approved Items in DB:", approvedItems);
 
         // 2. Fetch already processed planning_nos from purchase_order_master
         const { data: processedPOs, error: poError } = await supabase
@@ -202,6 +205,8 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
           .select("planning_no");
 
         if (poError) throw poError;
+        
+        console.log("2. Processed POs in DB:", processedPOs);
 
         const processedPlanningNos = new Set(
           processedPOs?.map((po) => po.planning_no).filter(Boolean)
@@ -211,9 +216,15 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
           ...new Set(
             approvedItems
               ?.map((item) => item.planning_no)
-              .filter((pNo) => pNo && !processedPlanningNos.has(pNo))
+              .filter((pNo) => {
+                const isProcessed = processedPlanningNos.has(pNo);
+                if (isProcessed) console.log(`Filtered out ${pNo} because it is already in purchase_order_master`);
+                return pNo && !isProcessed;
+              })
           ),
         ];
+        
+        console.log("3. Final Approved Planning Nos for dropdown:", approvedPlanningNos);
 
         if (approvedPlanningNos.length === 0) {
           setIndentOptions([]);
@@ -228,6 +239,8 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
           .in("planning_no", approvedPlanningNos);
 
         if (masterError) throw masterError;
+        
+        console.log("4. Master Data fetched for those Planning Nos:", masterData);
 
         const body = masterData || [];
         const options: string[] = [];
@@ -251,6 +264,7 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
 
         // De-duplicate while preserving order
         const uniqueOptions = Array.from(new Set(options));
+        console.log("5. Unique Options pushing to state:", uniqueOptions);
         setIndentOptions(uniqueOptions);
         setPlanningToVendor(planningVendor);
         setPlanningToFirm(planningFirm);
@@ -279,29 +293,28 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
     }
   }, [products, selectedIndent]);
 
-  // Ensure Vendor Details directory is loaded once when needed
-const ensureVendorDirectory = async () => {
+ const ensureVendorDirectory = async () => {
   if (Object.keys(vendorDirectory).length > 0) return vendorDirectory;
   setLoadingVendor(true);
   try {
     const { data: vendorSheet, error } = await supabase
-      .from("project_master")
-      .select("vendor_name, vendor_address, vendor_gstin, vendor_email")
+      .from("vendor_master")                        // ✅ table change
+      .select("vendor_name, address, gstin, email") // ✅ correct column names
       .not("vendor_name", "is", null);
-    
+
     if (error) throw error;
-    
+
     const dir: Record<string, { address: string; gstin: string; email: string }> = {};
-    
+
     (vendorSheet || []).forEach((vendor: any) => {
       const name = vendor.vendor_name?.toString().trim();
-      const address = vendor.vendor_address?.toString() || "";
-      const gstin = vendor.vendor_gstin?.toString().trim() || "";
-      const email = vendor.vendor_email?.toString().trim() || "";
-      
+      const address = vendor.address?.toString() || "";       // ✅ address
+      const gstin = vendor.gstin?.toString().trim() || "";   // ✅ gstin
+      const email = vendor.email?.toString().trim() || "";   // ✅ email
+
       if (name) dir[name] = { address, gstin, email };
     });
-    
+
     setVendorDirectory(dir);
     return dir;
   } catch (e) {
@@ -314,91 +327,90 @@ const ensureVendorDirectory = async () => {
 };
 
   const handleIndentChange = async (indentNo: string) => {
-  setSelectedIndent(indentNo);
-  if (!indentNo) {
-    setSelectedSupplier("");
-    setSelectedFirm("RBP INDIA PRIVATE LIMITED");
-    setPoData((prev) => ({
-      ...prev,
-      vendorId: "",
-      supplierAddress: "",
-      gstNumber: "",
-      supplierEmail: "",
-    }));
-    setProducts([]);
-    return;
-  }
-  
-  try {
-    setLoadingVendor(true);
-    const vendorName = planningToVendor[indentNo] || "";
-    const firmName = planningToFirm[indentNo] || "RBP INDIA PRIVATE LIMITED";
-    const vId = planningToVendorId[indentNo] || "";
-    setSelectedSupplier(vendorName);
-    setSelectedFirm(firmName);
-    setPoData(prev => ({ ...prev, vendorId: vId }));
-    
-    const currentVendorDir = await ensureVendorDirectory();
-    const info = currentVendorDir[vendorName] || {};
-    
-    setPoData((prev) => ({
-      ...prev,
-      supplierAddress: info?.address || "",
-      gstNumber: info?.gstin || "",
-      supplierEmail: info?.email || "",
-    }));
-    
-    // Load products for this indent
-    const { data: mData } = await supabase
-      .from("planning_master")
-      .select("*")
-      .eq("planning_no", indentNo);
-    
-    let mRow: any = null;
-    if (mData && mData.length > 0) mRow = mData[0];
+    setSelectedIndent(indentNo);
+    if (!indentNo) {
+      setSelectedSupplier("");
+      setSelectedFirm("RBP INDIA PRIVATE LIMITED");
+      setPoData((prev) => ({
+        ...prev,
+        vendorId: "",
+        supplierAddress: "",
+        gstNumber: "",
+        supplierEmail: "",
+      }));
+      setProducts([]);
+      return;
+    }
 
-    const { data, error } = await supabase
-      .from("planning_item_master")
-      .select("*")
-      .eq("planning_no", indentNo)
-      .eq("status", "Approved");
+    try {
+      setLoadingVendor(true);
+      const vendorName = planningToVendor[indentNo] || "";
+      const firmName = planningToFirm[indentNo] || "RBP INDIA PRIVATE LIMITED";
+      const vId = planningToVendorId[indentNo] || "";
+      setSelectedSupplier(vendorName);
+      setSelectedFirm(firmName);
+      setPoData(prev => ({ ...prev, vendorId: vId }));
 
-    if (error) throw error;
+      const currentVendorDir = await ensureVendorDirectory();
+      const info = currentVendorDir[vendorName] || {};
 
-    const mapped: ProductItem[] = (data || []).map((r: any, idx: number) => {
-      let unit = r.uom || "-";
-      let desc = r.description || "";
-      if (unit === "-") {
-        const match = desc.match(/\(UOM:\s*(.*?)\)/);
-        if (match) {
-          unit = match[1];
-          desc = desc.replace(match[0], "").trim();
+      setPoData((prev) => ({
+        ...prev,
+        supplierAddress: info?.address || "",
+        gstNumber: info?.gstin || "",
+        supplierEmail: info?.email || "",
+      }));
+
+      // Load products for this indent
+      const { data: mData } = await supabase
+        .from("planning_master")
+        .select("*")
+        .eq("planning_no", indentNo);
+
+      let mRow: any = null;
+      if (mData && mData.length > 0) mRow = mData[0];
+
+      const { data, error } = await supabase
+        .from("planning_item_master")
+        .select("id, planning_no, item, qty, description, uom")
+        .eq("planning_no", indentNo);
+
+      if (error) throw error;
+
+      const mapped: ProductItem[] = (data || []).map((r: any, idx: number) => {
+        let unit = r.uom || "-";
+        let desc = r.description || "";
+        if (unit === "-") {
+          const match = desc.match(/\(UOM:\s*(.*?)\)/);
+          if (match) {
+            unit = match[1];
+            desc = desc.replace(match[0], "").trim();
+          }
         }
-      }
 
-      return {
-        sn: idx + 1,
-        internalCode: r.planning_no || "",
-        itemType: mRow?.item_type || "",
-        product: r.item || "",
-        description: desc,
-        qty: Number(r.qty) || 0,
-        unit: unit,
-        rate: 0,
-        gst: 0,
-        discount: 0,
-        amount: 0,
-      };
-    }).sort((a, b) => a.sn - b.sn);
-    
-    setProducts(mapped);
-  } catch (error) {
-    console.error("Failed to load products for indent", error);
-    setProducts([]);
-  } finally {
-    setLoadingVendor(false);
-  }
-};
+        return {
+          sn: idx + 1,
+          internalCode: r.planning_no || "",
+          itemType: mRow?.item_type || "",
+          product: r.item || "",
+          description: desc,
+          qty: Number(r.qty) || 0,
+          unit: unit,
+          rate: 0,
+          gst: 0,
+          discount: 0,
+          amount: 0,
+        };
+      }).sort((a, b) => a.sn - b.sn);
+
+      setProducts(mapped);
+    } catch (error) {
+      console.error("Failed to load products for indent", error);
+      setProducts([]);
+    } finally {
+      setLoadingVendor(false);
+    }
+  };
 
   const handleInputChange = (field: string, value: string) => {
     setPoData((prev) => ({ ...prev, [field]: value }));
@@ -424,65 +436,65 @@ const ensureVendorDirectory = async () => {
   };
 
   const savePOHistory = async (pdfLink: string) => {
-   const planningNo = selectedIndent || "AUTO-" + Date.now();
-   const poNo = poData.poNumber || "AUTO-" + Date.now();
-   const poDate = poData.poDate || new Date().toISOString().split('T')[0];
-   const vendorName = selectedSupplier;
- 
-   let netPoAmount = 0;
+    const planningNo = selectedIndent || "AUTO-" + Date.now();
+    const poNo = poData.poNumber || "AUTO-" + Date.now();
+    const poDate = poData.poDate || new Date().toISOString().split('T')[0];
+    const vendorName = selectedSupplier;
 
-   const poItemRows = products.map((item) => {
-     const baseAmount = item.rate * item.qty;
-     const discountAmount = (baseAmount * item.discount) / 100;
-     const amountAfterDiscount = baseAmount - discountAmount;
-     const gstAmount = (amountAfterDiscount * item.gst) / 100;
-     const finalAmount = amountAfterDiscount + gstAmount;
-     
-     netPoAmount += finalAmount;
- 
-     return {
-       po_id: poNo,
-       planning_no: planningNo,
-       item: item.product,
-       qty: item.qty,
-       rate: item.rate,
-       gst_percent: item.gst,
-       discount_percent: item.discount,
-       net_amount: Math.round(finalAmount)
-     };
-   });
- 
-   const poMasterRow = {
-     po_id: poNo,
-     po_date: poDate,
-     planning_no: planningNo,
-     vendor_name: vendorName,
-     net_po_amount: Math.round(netPoAmount),
-     prepared_by: poData.preparedBy,
-     approved_by: poData.approvedBy,
-     po_copy: pdfLink,
+    let netPoAmount = 0;
+
+    const poItemRows = products.map((item) => {
+      const baseAmount = item.rate * item.qty;
+      const discountAmount = (baseAmount * item.discount) / 100;
+      const amountAfterDiscount = baseAmount - discountAmount;
+      const gstAmount = (amountAfterDiscount * item.gst) / 100;
+      const finalAmount = amountAfterDiscount + gstAmount;
+
+      netPoAmount += finalAmount;
+
+      return {
+        po_id: poNo,
+        planning_no: planningNo,
+        item: item.product,
+        qty: item.qty,
+        rate: item.rate,
+        gst_percent: item.gst,
+        discount_percent: item.discount,
+        net_amount: Math.round(finalAmount)
+      };
+    });
+
+    const poMasterRow = {
+      po_id: poNo,
+      po_date: poDate,
+      planning_no: planningNo,
+      vendor_name: vendorName,
+      net_po_amount: Math.round(netPoAmount),
+      prepared_by: poData.preparedBy,
+      approved_by: poData.approvedBy,
+      po_copy: pdfLink,
       vendor_id: poData.vendorId
-   };
+    };
 
-   try {
-     const { error: masterError } = await supabase
-       .from("purchase_order_master")
-       .insert([poMasterRow]);
- 
-     if (masterError) throw masterError;
+    try {
+      const { error: masterError } = await supabase
+        .from("purchase_order_master")
+        .insert([poMasterRow]);
 
-     const { error: itemsError } = await supabase
-       .from("po_item_master")
-       .insert(poItemRows);
-       
-     if (itemsError) throw itemsError;
- 
-     return { success: true };
-  } catch (error: any) {
-    console.error("Supabase insert error:", error);
-    return { success: false, error: error.message };
-  }
-};
+      if (masterError) throw masterError;
+
+      const { error: itemsError } = await supabase
+        .from("po_item_master")
+        .insert(poItemRows);
+
+      if (itemsError) throw itemsError;
+
+      return { success: true };
+    } catch (error: any) {
+      console.error("Supabase insert error:", error);
+      return { success: false, error: error.message };
+    }
+  };
   const generateAndUploadImage = async () => {
     try {
       // Prepare data for PDF - reference PDF format के according
@@ -510,9 +522,9 @@ const ensureVendorDirectory = async () => {
 
       // Generate and upload PDF
       const result = await generatePDFFromHTML(
-  pdfData,
-  selectedFirmData
-);
+        pdfData,
+        selectedFirmData
+      );
 
       return result;
     } catch (error) {
@@ -566,7 +578,7 @@ const ensureVendorDirectory = async () => {
         alert(
           `PO generated, uploaded, and history saved successfully!\nPDF Link: ${result.fileUrl}`
         );
-        handleReset(); 
+        handleReset();
       } else {
         alert(
           `PO generated and uploaded, but history save failed: ${saveResult.error}\nPDF Link: ${result.fileUrl}`
@@ -579,133 +591,133 @@ const ensureVendorDirectory = async () => {
     setIsSubmitting(false);
   };
 
-//  const fetchTermsForItemType = async (itemType: string) => {
-//   if (!itemType) return;
+  //  const fetchTermsForItemType = async (itemType: string) => {
+  //   if (!itemType) return;
 
-//   if (termsCache[itemType]) {
-//     setTerms(termsCache[itemType]);
-//     setTermsSource(`Loaded from cache for ${itemType}`);
-//     return;
-//   }
+  //   if (termsCache[itemType]) {
+  //     setTerms(termsCache[itemType]);
+  //     setTermsSource(`Loaded from cache for ${itemType}`);
+  //     return;
+  //   }
 
-//   setLoadingTerms(true);
+  //   setLoadingTerms(true);
 
-//   try {
-// const { data, error } = await supabase
-//   .from("po")
-//   .select("*");
+  //   try {
+  // const { data, error } = await supabase
+  //   .from("po")
+  //   .select("*");
 
-//     if (error) throw error;
+  //     if (error) throw error;
 
-//     const filteredTerms = data?.map((row) => row.term_text) || [];
-    
-//     // If no terms found, use default terms
-//     if (filteredTerms.length === 0) {
-//       setTerms([
-//         "Payment within 30 days of delivery",
-//         "Goods to be delivered at the destination address mentioned",
-//         "GST extra as applicable",
-//         "Warranty period as per standard terms",
-//         "Any disputes subject to local jurisdiction",
-//         "Delivery schedule to be strictly adhered to",
-//       ]);
-//       setTermsSource(`No terms found for ${itemType}, using defaults`);
-//     } else {
-//       setTermsCache((prev) => ({ ...prev, [itemType]: filteredTerms }));
-//       setTerms(filteredTerms);
-//       setTermsSource(`Fetched from database for ${itemType}`);
-//     }
-//   } catch (error) {
-//     console.error(error);
-//     setError("Failed to load terms and conditions");
-//     setTermsSource(`Failed to load terms for ${itemType}`);
-//   } finally {
-//     setLoadingTerms(false);
-//   }
-// };
+  //     const filteredTerms = data?.map((row) => row.term_text) || [];
+
+  //     // If no terms found, use default terms
+  //     if (filteredTerms.length === 0) {
+  //       setTerms([
+  //         "Payment within 30 days of delivery",
+  //         "Goods to be delivered at the destination address mentioned",
+  //         "GST extra as applicable",
+  //         "Warranty period as per standard terms",
+  //         "Any disputes subject to local jurisdiction",
+  //         "Delivery schedule to be strictly adhered to",
+  //       ]);
+  //       setTermsSource(`No terms found for ${itemType}, using defaults`);
+  //     } else {
+  //       setTermsCache((prev) => ({ ...prev, [itemType]: filteredTerms }));
+  //       setTerms(filteredTerms);
+  //       setTermsSource(`Fetched from database for ${itemType}`);
+  //     }
+  //   } catch (error) {
+  //     console.error(error);
+  //     setError("Failed to load terms and conditions");
+  //     setTermsSource(`Failed to load terms for ${itemType}`);
+  //   } finally {
+  //     setLoadingTerms(false);
+  //   }
+  // };
 
 
 
-const fetchTermsForItemType = async (itemType: string) => {
-  if (!itemType) {
-    console.log("No item type provided");
-    return;
-  }
-
-  console.log("👉 Selected Item Type:", itemType);
-
-  // Check cache first
-  if (termsCache[itemType]) {
-    console.log(`✅ Using cached terms for ${itemType}`);
-    console.log("📦 Cached Data:", termsCache[itemType]);
-    setTerms(termsCache[itemType]);
-    setTermsSource(`Loaded from cache for ${itemType}`);
-    return;
-  }
-
-  setLoadingTerms(true);
-  console.log(`🔄 Fetching terms for item type: ${itemType}`);
-
-  try {
-    const { data, error } = await supabase
-      .from("project_master")
-      .select("terms_and_conditions")
-      .eq("item_type", itemType)
-      .not("terms_and_conditions", "is", null);
-
-    if (error) throw error;
-
-    // 🔥 IMPORTANT DEBUG
-    console.log("📥 Raw Supabase Response:", data);
-
-    console.log(`📊 Total Records Found: ${data?.length || 0}`);
-
-    if (data && data.length > 0) {
-      let allTerms: string[] = [];
-      
-      data.forEach((record, index) => {
-        console.log(`📌 Record ${index + 1}:`, record);
-
-        if (record.terms_and_conditions) {
-
-          console.log(
-            `📝 Raw Terms (Record ${index + 1}):`,
-            record.terms_and_conditions
-          );
-
-          const term = record.terms_and_conditions.trim();
-
-          if (term.length > 0) {
-            allTerms.push(term);
-          }
-
-          console.log(`✅ Final Term Added (Record ${index + 1}):`, term);
-        }
-      });
-
-      console.log("📦 Final Combined Terms Array:", allTerms);
-      
-      if (allTerms.length > 0) {
-        setTermsCache((prev) => ({ ...prev, [itemType]: allTerms }));
-        setTerms(allTerms);
-        setTermsSource(`Fetched ${allTerms.length} terms from po_masters for ${itemType}`);
-        console.log(`🚀 Set ${allTerms.length} terms for ${itemType}`);
-      } else {
-        console.log("⚠️ No valid terms after processing");
-        setTermsSource(`No valid terms found for ${itemType}, using defaults`);
-      }
-    } else {
-      console.log(`❌ No terms found in DB for item_type: ${itemType}`);
-      setTermsSource(`No terms found for ${itemType} in po_masters, using defaults`);
+  const fetchTermsForItemType = async (itemType: string) => {
+    if (!itemType) {
+      console.log("No item type provided");
+      return;
     }
-  } catch (error) {
-    console.error("🔥 Error fetching terms:", error);
-    setError("Failed to load terms and conditions");
-    setTermsSource(`Failed to load terms for ${itemType}`);
-  } finally {
-    setLoadingTerms(false);
-  }
-};
+
+    console.log("👉 Selected Item Type:", itemType);
+
+    // Check cache first
+    if (termsCache[itemType]) {
+      console.log(`✅ Using cached terms for ${itemType}`);
+      console.log("📦 Cached Data:", termsCache[itemType]);
+      setTerms(termsCache[itemType]);
+      setTermsSource(`Loaded from cache for ${itemType}`);
+      return;
+    }
+
+    setLoadingTerms(true);
+    console.log(`🔄 Fetching terms for item type: ${itemType}`);
+
+    try {
+      const { data, error } = await supabase
+        .from("project_master")
+        .select("terms_and_conditions")
+        .eq("item_type", itemType)
+        .not("terms_and_conditions", "is", null);
+
+      if (error) throw error;
+
+      // 🔥 IMPORTANT DEBUG
+      console.log("📥 Raw Supabase Response:", data);
+
+      console.log(`📊 Total Records Found: ${data?.length || 0}`);
+
+      if (data && data.length > 0) {
+        let allTerms: string[] = [];
+
+        data.forEach((record, index) => {
+          console.log(`📌 Record ${index + 1}:`, record);
+
+          if (record.terms_and_conditions) {
+
+            console.log(
+              `📝 Raw Terms (Record ${index + 1}):`,
+              record.terms_and_conditions
+            );
+
+            const term = record.terms_and_conditions.trim();
+
+            if (term.length > 0) {
+              allTerms.push(term);
+            }
+
+            console.log(`✅ Final Term Added (Record ${index + 1}):`, term);
+          }
+        });
+
+        console.log("📦 Final Combined Terms Array:", allTerms);
+
+        if (allTerms.length > 0) {
+          setTermsCache((prev) => ({ ...prev, [itemType]: allTerms }));
+          setTerms(allTerms);
+          setTermsSource(`Fetched ${allTerms.length} terms from po_masters for ${itemType}`);
+          console.log(`🚀 Set ${allTerms.length} terms for ${itemType}`);
+        } else {
+          console.log("⚠️ No valid terms after processing");
+          setTermsSource(`No valid terms found for ${itemType}, using defaults`);
+        }
+      } else {
+        console.log(`❌ No terms found in DB for item_type: ${itemType}`);
+        setTermsSource(`No terms found for ${itemType} in po_masters, using defaults`);
+      }
+    } catch (error) {
+      console.error("🔥 Error fetching terms:", error);
+      setError("Failed to load terms and conditions");
+      setTermsSource(`Failed to load terms for ${itemType}`);
+    } finally {
+      setLoadingTerms(false);
+    }
+  };
 
 
 
@@ -1118,8 +1130,8 @@ const fetchTermsForItemType = async (itemType: string) => {
               </div>
               <textarea
                 className={`w-full px-3 py-2 border border-gray-300 rounded-lg resize-none ${editingBilling
-                    ? "bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    : "bg-gray-50"
+                  ? "bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  : "bg-gray-50"
                   }`}
                 rows={4}
                 value={billingAddress}
@@ -1162,8 +1174,8 @@ const fetchTermsForItemType = async (itemType: string) => {
               </div>
               <textarea
                 className={`w-full px-3 py-2 border border-gray-300 rounded-lg resize-none ${editingDestination
-                    ? "bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    : "bg-gray-50"
+                  ? "bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  : "bg-gray-50"
                   }`}
                 rows={4}
                 value={destinationAddress}
@@ -1185,7 +1197,7 @@ const fetchTermsForItemType = async (itemType: string) => {
                         S/N
                       </th>
                       <th className="hidden px-4 py-3 text-xs font-bold tracking-wider text-left text-white uppercase md:table-cell">
-                        Internal Code
+                        Planning No
                       </th>
                       <th className="hidden px-4 py-3 text-xs font-bold tracking-wider text-left text-white uppercase md:table-cell">
                         Item Type
@@ -1428,8 +1440,8 @@ const fetchTermsForItemType = async (itemType: string) => {
             </div>
             <textarea
               className={`w-full px-3 py-2 border border-gray-300 rounded-lg resize-none ${editingFooterNotes
-                  ? "bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  : "bg-gray-50"
+                ? "bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                : "bg-gray-50"
                 }`}
               rows={4}
               value={footerNotes}
@@ -1474,8 +1486,8 @@ const fetchTermsForItemType = async (itemType: string) => {
             </div>
             <textarea
               className={`w-full px-3 py-2 border border-gray-300 rounded-lg resize-none ${editingPayment
-                  ? "bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  : "bg-gray-50"
+                ? "bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                : "bg-gray-50"
                 }`}
               rows={4}
               value={paymentTerms}
@@ -1520,8 +1532,8 @@ const fetchTermsForItemType = async (itemType: string) => {
             </div>
             <textarea
               className={`w-full px-3 py-2 border border-gray-300 rounded-lg resize-none ${editingWarranty
-                  ? "bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  : "bg-gray-50"
+                ? "bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                : "bg-gray-50"
                 }`}
               rows={4}
               value={warrantyText}
@@ -1633,7 +1645,7 @@ const fetchTermsForItemType = async (itemType: string) => {
               <label className="block mb-2 text-sm font-medium text-gray-700">
                 Prepared By *
               </label>
-              
+
               <input
                 type="text"
                 value={poData.preparedBy}
@@ -1691,8 +1703,8 @@ const fetchTermsForItemType = async (itemType: string) => {
               type="submit"
               disabled={isSubmitting}
               className={`flex justify-center items-center px-8 py-3 text-white rounded-lg transition-colors duration-200 sm:justify-start ${isSubmitting
-                  ? "bg-blue-400 cursor-not-allowed"
-                  : "bg-blue-600 hover:bg-blue-700"
+                ? "bg-blue-400 cursor-not-allowed"
+                : "bg-blue-600 hover:bg-blue-700"
                 }`}
             >
               {isSubmitting ? (

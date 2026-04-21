@@ -42,7 +42,7 @@ const Planning = () => {
 
   type Row = {
     planningNo: string;
-    serialNo: string;
+    itemCode: string;
     date: string;
     requesterName: string;
     projectName: string;
@@ -65,58 +65,25 @@ const Planning = () => {
 
 
   const loadRows = async () => {
-  setLoading(true);
-  setError(null);
+    setLoading(true);
+    setError(null);
 
-  try {
-    const { data, error } = await supabase
-      .from("planning_master")
-      .select(`*, planning_item_master (*)`)
-      .order("id", { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from("planning_master")
+        .select(`*, planning_item_master (id, planning_no, item, qty, description, uom, item_code)`)
+        .order("id", { ascending: false });
 
-    if (error) throw error;
+      if (error) throw error;
 
-    const transformedData: any[] = [];
-    if (data) {
-      data.forEach((master: any) => {
-        const items = master.planning_item_master || [];
-        if (items.length === 0) {
-          transformedData.push({
-            planningNo: master.planning_no,
-            serialNo: "-",
-            date: master.date,
-            requesterName: master.requester_name,
-            projectName: master.project,
-            firmName: master.firm,
-            vendorName: master.vendor_name,
-            itemType: master.item_type,
-            packingDetail: "-",
-            itemName: "-",
-            uom: "-",
-            qty: "0",
-            qtySet: "1",
-            totalQty: "0",
-            remarks: "-",
-            state: master.state,
-            department: master.department,
-            vendorId: master.vendor_id,
-          });
-        } else {
-          items.forEach((item: any, idx: number) => {
-            let remarks = item.description || "";
-            let uomMatch = item.uom || "";
-            if (!uomMatch) {
-              const uomRegex = /\(UOM:\s*(.*?)\)/;
-              const match = remarks.match(uomRegex);
-              if (match) {
-                uomMatch = match[1];
-                remarks = remarks.replace(uomRegex, "").trim();
-              }
-            }
-
+      const transformedData: any[] = [];
+      if (data) {
+        data.forEach((master: any) => {
+          const items = master.planning_item_master || [];
+          if (items.length === 0) {
             transformedData.push({
               planningNo: master.planning_no,
-              serialNo: String(idx + 1),
+              itemCode: "-",
               date: master.date,
               requesterName: master.requester_name,
               projectName: master.project,
@@ -124,164 +91,197 @@ const Planning = () => {
               vendorName: master.vendor_name,
               itemType: master.item_type,
               packingDetail: "-",
-              itemName: item.item,
-              uom: uomMatch || "-",
-              qty: String(item.qty),
+              itemName: "-",
+              uom: "-",
+              qty: "0",
               qtySet: "1",
-              totalQty: String(item.qty),
-              remarks: remarks,
+              totalQty: "0",
+              remarks: "-",
               state: master.state,
               department: master.department,
               vendorId: master.vendor_id,
             });
-          });
-        }
-      });
-    }
+          } else {
+            items.forEach((item: any, idx: number) => {
+              let remarks = item.description || "";
+              let uomMatch = item.uom || "";
+              if (!uomMatch) {
+                const uomRegex = /\(UOM:\s*(.*?)\)/;
+                const match = remarks.match(uomRegex);
+                if (match) {
+                  uomMatch = match[1];
+                  remarks = remarks.replace(uomRegex, "").trim();
+                }
+              }
 
-    setRows(transformedData);
-  } catch (e: any) {
-    setError(e.message || "Failed to load planning data");
-  } finally {
-    setLoading(false);
-  }
-};
-
-
-
-const handleView = (planningNo: string) => {
-  handlePlanningNumberClick(planningNo);
-};
-
-// Add this function to handle edit
-const handleEdit = async (planningNo: string) => {
-  try {
-    setLoading(true);
-    
-    const { data: mData, error: mError } = await supabase
-      .from("planning_master")
-      .select("*")
-      .eq("planning_no", planningNo);
-    if (mError) throw mError;
-
-    const { data: iData, error: iError } = await supabase
-      .from("planning_item_master")
-      .select("*")
-      .eq("planning_no", planningNo)
-      .order("id", { ascending: true });
-    if (iError) throw iError;
-
-    if (mData && mData.length > 0) {
-      const master = mData[0];
-      const items = iData || [];
-      
-      const formData = {
-        date: master.date || new Date().toISOString().split('T')[0],
-        requesterName: master.requester_name || "",
-        projectName: master.project || "",
-        firmName: master.firm || "",
-        vendorName: master.vendor_name || "",
-        itemType: master.item_type || "",
-        state: master.state || "",
-        department: master.department || "",
-        vendorId: master.vendor_id || "",
-        packingDetailSelect: "",
-        masterQuantity: "",
-      };
-
-      const products = items.map((item: any) => {
-        let remarks = item.description || "";
-        let uomMatch = item.uom || "";
-        if (!uomMatch) {
-          const uomRegex = /\(UOM:\s*(.*?)\)/;
-          const match = remarks.match(uomRegex);
-          if (match) {
-            uomMatch = match[1];
-            remarks = remarks.replace(uomRegex, "").trim();
+              transformedData.push({
+                planningNo: master.planning_no,
+                itemCode: item.item_code || "-",
+                date: master.date,
+                requesterName: master.requester_name,
+                projectName: master.project,
+                firmName: master.firm,
+                vendorName: master.vendor_name,
+                itemType: master.item_type,
+                packingDetail: "-",
+                itemName: item.item,
+                uom: uomMatch || "-",
+                qty: String(item.qty),
+                qtySet: "1",
+                totalQty: String(item.qty),
+                remarks: remarks,
+                state: master.state,
+                department: master.department,
+                vendorId: master.vendor_id,
+              });
+            });
           }
-        }
-        
-        return {
-          id: `edit-${item.id}-${Date.now()}`,
-          packingDetail: "",
-          itemName: item.item || "",
-          uom: uomMatch || "",
-          qty: Number(item.qty) || 0,
-          qtySet: 1,
-          totalQty: Number(item.qty) || 0,
-          remarks: remarks,
-        };
-      });
+        });
+      }
 
-      // Construct flat rows again exactly like before for `selectedPlanningData` if needed
-      const flatRows = items.map((item: any, idx: number) => ({
-        planningNo: master.planning_no,
-        serialNo: String(idx + 1),
-        date: master.date,
-        requesterName: master.requester_name,
-        projectName: master.project,
-        firmName: master.firm,
-        vendorName: master.vendor_name,
-        itemType: master.item_type,
-        packingDetail: "-",
-        itemName: item.item,
-        uom: "-",
-        qty: String(item.qty),
-        qtySet: "1",
-        totalQty: String(item.qty),
-        remarks: item.description,
-        state: master.state,
-        department: master.department,
-      }));
-
-      setEditData({
-        formData,
-        products,
-        planningNo: master.planning_no,
-      });
-      setShowForm(true);
+      setRows(transformedData);
+    } catch (e: any) {
+      setError(e.message || "Failed to load planning data");
+    } finally {
+      setLoading(false);
     }
-  } catch (error) {
-    console.error("Error loading planning for edit:", error);
-    alert("Failed to load planning data for edit");
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
-// Add this function to handle delete
-const handleDelete = async (planningNo: string) => {
-  if (!window.confirm(`Are you sure you want to delete Planning ${planningNo} and all its items?`)) {
-    return;
-  }
 
-  try {
-    setLoading(true);
-    
-    // First delete items
-    const { error: itemsError } = await supabase
-      .from("planning_item_master")
-      .delete()
-      .eq("planning_no", planningNo);
-    if (itemsError) throw itemsError;
 
-    // Then delete master
-    const { error: masterError } = await supabase
-      .from("planning_master")
-      .delete()
-      .eq("planning_no", planningNo);
-    if (masterError) throw masterError;
+  const handleView = (planningNo: string) => {
+    handlePlanningNumberClick(planningNo);
+  };
 
-    // Refresh the data
-    await loadRows();
-    alert("Planning deleted successfully");
-  } catch (error) {
-    console.error("Error deleting planning:", error);
-    alert("Failed to delete planning");
-  } finally {
-    setLoading(false);
-  }
-};
+  // Add this function to handle edit
+  const handleEdit = async (planningNo: string) => {
+    try {
+      setLoading(true);
+
+      const { data: mData, error: mError } = await supabase
+        .from("planning_master")
+        .select("*")
+        .eq("planning_no", planningNo);
+      if (mError) throw mError;
+
+      const { data: iData, error: iError } = await supabase
+        .from("planning_item_master")
+        .select("*")
+        .eq("planning_no", planningNo)
+        .order("id", { ascending: true });
+      if (iError) throw iError;
+
+      if (mData && mData.length > 0) {
+        const master = mData[0];
+        const items = iData || [];
+
+        const formData = {
+          date: master.date || new Date().toISOString().split('T')[0],
+          requesterName: master.requester_name || "",
+          projectName: master.project || "",
+          firmName: master.firm || "",
+          vendorName: master.vendor_name || "",
+          itemType: master.item_type || "",
+          state: master.state || "",
+          department: master.department || "",
+          vendorId: master.vendor_id || "",
+          packingDetailSelect: "",
+          masterQuantity: "",
+        };
+
+        const products = items.map((item: any) => {
+          let remarks = item.description || "";
+          let uomMatch = item.uom || "";
+          if (!uomMatch) {
+            const uomRegex = /\(UOM:\s*(.*?)\)/;
+            const match = remarks.match(uomRegex);
+            if (match) {
+              uomMatch = match[1];
+              remarks = remarks.replace(uomRegex, "").trim();
+            }
+          }
+
+          return {
+            id: `edit-${item.id}-${Date.now()}`,
+            packingDetail: "",
+            itemName: item.item || "",
+            uom: uomMatch || "",
+            qty: Number(item.qty) || 0,
+            qtySet: 1,
+            totalQty: Number(item.qty) || 0,
+            remarks: remarks,
+          };
+        });
+
+        // Construct flat rows again exactly like before for `selectedPlanningData` if needed
+        const flatRows = items.map((item: any, idx: number) => ({
+          planningNo: master.planning_no,
+          itemCode: item.item_code || "-",
+          date: master.date,
+          requesterName: master.requester_name,
+          projectName: master.project,
+          firmName: master.firm,
+          vendorName: master.vendor_name,
+          itemType: master.item_type,
+          packingDetail: "-",
+          itemName: item.item,
+          uom: "-",
+          qty: String(item.qty),
+          qtySet: "1",
+          totalQty: String(item.qty),
+          remarks: item.description,
+          state: master.state,
+          department: master.department,
+        }));
+
+        setEditData({
+          formData,
+          products,
+          planningNo: master.planning_no,
+        });
+        setShowForm(true);
+      }
+    } catch (error) {
+      console.error("Error loading planning for edit:", error);
+      alert("Failed to load planning data for edit");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Add this function to handle delete
+  const handleDelete = async (planningNo: string) => {
+    if (!window.confirm(`Are you sure you want to delete Planning ${planningNo} and all its items?`)) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      // First delete items
+      const { error: itemsError } = await supabase
+        .from("planning_item_master")
+        .delete()
+        .eq("planning_no", planningNo);
+      if (itemsError) throw itemsError;
+
+      // Then delete master
+      const { error: masterError } = await supabase
+        .from("planning_master")
+        .delete()
+        .eq("planning_no", planningNo);
+      if (masterError) throw masterError;
+
+      // Refresh the data
+      await loadRows();
+      alert("Planning deleted successfully");
+    } catch (error) {
+      console.error("Error deleting planning:", error);
+      alert("Failed to delete planning");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     loadRows();
@@ -473,8 +473,8 @@ const handleDelete = async (planningNo: string) => {
                 <button
                   onClick={() => setViewMode("table")}
                   className={`flex-1 py-2 px-4 rounded-lg transition-all duration-200 ${viewMode === "table"
-                      ? "bg-blue-600 text-white shadow-md"
-                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    ? "bg-blue-600 text-white shadow-md"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                     }`}
                 >
                   Table View
@@ -482,8 +482,8 @@ const handleDelete = async (planningNo: string) => {
                 <button
                   onClick={() => setViewMode("cards")}
                   className={`flex-1 py-2 px-4 rounded-lg transition-all duration-200 ${viewMode === "cards"
-                      ? "bg-blue-600 text-white shadow-md"
-                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    ? "bg-blue-600 text-white shadow-md"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                     }`}
                 >
                   Cards View
@@ -523,9 +523,9 @@ const handleDelete = async (planningNo: string) => {
                     <tr>
                       {[
                         "Planning No",
-                        "Serial No",
                         "Date",
                         "Requester",
+                        "Item Code",
                         "Project",
                         "Firm",
                         "Vendor",
@@ -572,9 +572,6 @@ const handleDelete = async (planningNo: string) => {
                           </button>
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap">
-                          {row.serialNo || "-"}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap">
                           {formatDateToDDMMYYYY(row.date) || "-"}
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap">
@@ -582,6 +579,9 @@ const handleDelete = async (planningNo: string) => {
                             <User className="w-4 h-4 text-gray-400" />
                             {row.requesterName || "-"}
                           </div>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap">
+                          {row.itemCode || "-"}
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap">
                           {row.projectName || "-"}
@@ -658,27 +658,27 @@ const handleDelete = async (planningNo: string) => {
                         </td> */}
 
                         <td className="px-6 py-4 text-sm text-gray-700 whitespace-nowrap">
-  <div className="flex gap-2 items-center">
-    <button 
-      onClick={() => handleView(row.planningNo)}
-      className="p-2 text-gray-400 rounded-lg transition-colors hover:text-blue-600 hover:bg-blue-50"
-    >
-      <Eye className="w-4 h-4" />
-    </button>
-    <button 
-      onClick={() => handleEdit(row.planningNo)}
-      className="p-2 text-gray-400 rounded-lg transition-colors hover:text-emerald-600 hover:bg-emerald-50"
-    >
-      <Edit className="w-4 h-4" />
-    </button>
-    <button 
-      onClick={() => handleDelete(row.planningNo)}
-      className="p-2 text-gray-400 rounded-lg transition-colors hover:text-red-600 hover:bg-red-50"
-    >
-      <Trash2 className="w-4 h-4" />
-    </button>
-  </div>
-</td>
+                          <div className="flex gap-2 items-center">
+                            <button
+                              onClick={() => handleView(row.planningNo)}
+                              className="p-2 text-gray-400 rounded-lg transition-colors hover:text-blue-600 hover:bg-blue-50"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleEdit(row.planningNo)}
+                              className="p-2 text-gray-400 rounded-lg transition-colors hover:text-emerald-600 hover:bg-emerald-50"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(row.planningNo)}
+                              className="p-2 text-gray-400 rounded-lg transition-colors hover:text-red-600 hover:bg-red-50"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -703,7 +703,7 @@ const handleDelete = async (planningNo: string) => {
                             {row.planningNo || "N/A"}
                           </h3>
                           <p className="text-sm text-gray-500">
-                            #{row.serialNo}
+                            {row.itemCode}
                           </p>
                         </div>
                       </div>
@@ -770,19 +770,19 @@ const handleDelete = async (planningNo: string) => {
                           </button>
                         </div> */}
                         <div className="flex gap-1">
-  <button 
-    onClick={() => handleView(row.planningNo)}
-    className="p-2 text-gray-400 rounded-lg transition-colors hover:text-blue-600 hover:bg-blue-50"
-  >
-    <Eye className="w-4 h-4" />
-  </button>
-  <button 
-    onClick={() => handleEdit(row.planningNo)}
-    className="p-2 text-gray-400 rounded-lg transition-colors hover:text-emerald-600 hover:bg-emerald-50"
-  >
-    <Edit className="w-4 h-4" />
-  </button>
-</div>
+                          <button
+                            onClick={() => handleView(row.planningNo)}
+                            className="p-2 text-gray-400 rounded-lg transition-colors hover:text-blue-600 hover:bg-blue-50"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleEdit(row.planningNo)}
+                            className="p-2 text-gray-400 rounded-lg transition-colors hover:text-emerald-600 hover:bg-emerald-50"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>

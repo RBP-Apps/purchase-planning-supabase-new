@@ -29,6 +29,7 @@ interface Product {
   id: string;
   packingDetail: string;
   itemName: string;
+   itemCode?: string;
   uom: string;
   qty: number;
   qtySet: number;
@@ -94,6 +95,14 @@ const PlanningForm: React.FC<PlanningFormProps> = ({
   const [dropdownLoading, setDropdownLoading] = useState<boolean>(false);
   const [dropdownError, setDropdownError] = useState<string | null>(null);
 
+  const [uomOptions, setUomOptions] = useState<string[]>([
+    "Kg",
+    "Pieces",
+    "Meters",
+    "Liters",
+    "Sets",
+  ]);
+
   const [itemData, setItemData] = useState<{
     [key: string]: { qtySet: number; uom: string };
   }>({});
@@ -114,7 +123,9 @@ const PlanningForm: React.FC<PlanningFormProps> = ({
 
   // All Master Items (loaded once, filtered by item type in UI) - similar to BOS approach
   const [allMasterItems, setAllMasterItems] = useState<
-    { name: string; group: string; uom: string }[]
+    {
+      code: any | string | undefined; name: string; group: string; uom: string 
+}[]
   >([]);
 
 
@@ -259,95 +270,77 @@ const PlanningForm: React.FC<PlanningFormProps> = ({
 
 
 
-  const fetchDropdownData = async () => {
-    try {
-      setDropdownLoading(true);
+const fetchDropdownData = async () => {
+  try {
+    setDropdownLoading(true);
 
-      // 1-7. Fetch all required fields from project_master in simplified calls
-      const { data: pmData, error: pmError } = await supabase
-        .from("project_master")
-        .select("project_name, firm_name, vendor_name, item_type, uom, state, department_name, vendor_id, product_name");
+    // project_master se sirf project, firm, state, department
+    const { data: pmData, error: pmError } = await supabase
+      .from("project_master")
+      .select("project_name, firm_name, uom, state, department_name");
 
-      if (pmError) throw pmError;
+    if (pmError) throw pmError;
 
-      if (pmData) {
-        // Project Options
-        setProjectOptions([...new Set(pmData.map(p => p.project_name).filter(Boolean))]);
-        
-        // Firm Options
-        setFirmOptions([...new Set(pmData.map(f => f.firm_name).filter(Boolean))]);
-        
-        // Vendor Options & Item Type Mapping
-        const vendors = [...new Set(pmData.map(v => v.vendor_name).filter(Boolean))];
-        setVendorOptionsFlat(vendors);
+    if (pmData) {
+      setProjectOptions([...new Set(pmData.map(p => p.project_name).filter(Boolean))]);
+      setFirmOptions([...new Set(pmData.map(f => f.firm_name).filter(Boolean))]);
+      setUomOptions([...new Set(pmData.map(u => u.uom).filter(Boolean))]);
+      setStateOptions([...new Set(pmData.map(s => s.state).filter(Boolean))]);
+      setDepartmentOptionsFlat([...new Set(pmData.map(d => d.department_name).filter(Boolean))]);
 
-        const mapping: Record<string, string> = {};
-        pmData.forEach(v => {
-          if (v.vendor_name && v.vendor_id) {
-            mapping[v.vendor_name] = String(v.vendor_id);
-          }
-        });
-        setVendorNameToId(mapping);
-
-        const vMapping: Record<string, string[]> = {};
-        pmData.forEach(v => {
-          if (v.item_type && v.vendor_name) {
-            if (!vMapping[v.item_type]) vMapping[v.item_type] = [];
-            if (!vMapping[v.item_type].includes(v.vendor_name)) {
-              vMapping[v.item_type].push(v.vendor_name);
-            }
-          }
-        });
-        setItemTypeToVendors(vMapping);
-
-        // UOM Options
-        setUomOptions([...new Set(pmData.map(u => u.uom).filter(Boolean))]);
-
-        // State Options
-        setStateOptions([...new Set(pmData.map(s => s.state).filter(Boolean))]);
-
-        // Department Options Flat
-        setDepartmentOptionsFlat([...new Set(pmData.map(d => d.department_name).filter(Boolean))]);
-
-        // Item Type Options
-        setItemTypeOptions([...new Set(pmData.map(i => i.item_type).filter(Boolean))]);
-
-        // Vendor ID Options
-        setVendorIdOptions([...new Set(pmData.map(v => v.vendor_id).filter(Boolean).map(id => String(id)))]);
-
-        // State to Department Mapping
-        const sdMapping: Record<string, string[]> = {};
-        pmData.forEach(item => {
-          if (item.state && item.department_name) {
-            if (!sdMapping[item.state]) sdMapping[item.state] = [];
-            if (!sdMapping[item.state].includes(item.department_name)) {
-              sdMapping[item.state].push(item.department_name);
-            }
-          }
-        });
-        setStateToDepartments(sdMapping);
-
-        // Master Items (Products)
-        setAllMasterItems(
-          pmData
-            .filter(p => p.product_name && p.item_type)
-            .map(p => ({
-              name: p.product_name,
-              group: p.item_type,
-              uom: p.uom || ""
-            }))
-        );
-      }
-
-      setEnhancedMappingsLoaded(true);
-
-    } catch (err) {
-      console.error("Error loading dropdown data:", err);
-      setDropdownError("Failed to load dropdown data");
-    } finally {
-      setDropdownLoading(false);
+      const sdMapping: Record<string, string[]> = {};
+      pmData.forEach(item => {
+        if (item.state && item.department_name) {
+          if (!sdMapping[item.state]) sdMapping[item.state] = [];
+          if (!sdMapping[item.state].includes(item.department_name))
+            sdMapping[item.state].push(item.department_name);
+        }
+      });
+      setStateToDepartments(sdMapping);
     }
-  };
+
+    // vendor_master se items_type, vendor_name, vendor_id
+    const { data: vmData, error: vmError } = await supabase
+      .from("vendor_master")
+      .select("items_type, vendor_name, vendor_id");
+
+    if (vmError) throw vmError;
+
+    if (vmData) {
+      setItemTypeOptions([...new Set(vmData.map(v => v.items_type).filter(Boolean))]);
+      setVendorOptionsFlat([...new Set(vmData.map(v => v.vendor_name).filter(Boolean))]);
+
+      const nameToId: Record<string, string> = {};
+      vmData.forEach(v => {
+        if (v.vendor_name && v.vendor_id)
+          nameToId[v.vendor_name] = String(v.vendor_id);
+      });
+      setVendorNameToId(nameToId);
+
+      const vMapping: Record<string, string[]> = {};
+      vmData.forEach(v => {
+        if (v.items_type && v.vendor_name) {
+          if (!vMapping[v.items_type]) vMapping[v.items_type] = [];
+          if (!vMapping[v.items_type].includes(v.vendor_name))
+            vMapping[v.items_type].push(v.vendor_name);
+        }
+      });
+      setItemTypeToVendors(vMapping);
+
+      setVendorIdOptions([...new Set(vmData.map(v => v.vendor_id).filter(Boolean).map(id => String(id)))]);
+    }
+
+    // ✅ PRODUCTS YAHAN FETCH NAHI — loadAllMasterItems useEffect handle karega
+    setEnhancedMappingsLoaded(true);
+
+  } catch (err) {
+    console.error("Error loading dropdown data:", err);
+
+    setDropdownError("Failed to load dropdown data");
+  } finally {
+    setDropdownLoading(false);
+  }
+};
 
 
 
@@ -502,11 +495,12 @@ const PlanningForm: React.FC<PlanningFormProps> = ({
 
   const loadBOSProducts = async () => {
     try {
-      // Fetch BOS products from project_master table using item_type column
       const { data: bosProducts, error } = await supabase
-        .from("project_master")
-        .select("product_name, uom, item_type")  // Changed from group_head to item_type
-        .ilike("item_type", "bos"); // Case-insensitive search for BOS
+       .from("item_master")
+.select("product_name, item_type, uom, product_code")
+        .ilike("item_type", "bos");
+
+      console.log("[BOS Fetch] Data:", bosProducts, "Error:", error);
 
       if (error) throw error;
 
@@ -518,6 +512,7 @@ const PlanningForm: React.FC<PlanningFormProps> = ({
             id: `bos-${index}-${Date.now()}`,
             packingDetail: formData.packingDetailSelect || "Standard Pack",
             itemName: product.product_name,
+            itemCode: product.product_code,
             uom: product.uom || "",
             qty: 0,
             qtySet: 1,
@@ -549,48 +544,43 @@ const PlanningForm: React.FC<PlanningFormProps> = ({
 
 
 
-  // Load ALL Master Items once (not filtered by item type) - similar to BOS approach
-  // Load ALL Master Items once
-  useEffect(() => {
-    const loadAllMasterItems = async () => {
-      if (allMasterItems.length > 0) return;
+useEffect(() => {
+  const loadAllMasterItems = async () => {
+    setMasterItemsLoading(true);
+    setAllMasterItems([]); // pehle clear karo
+    try {
+      const { data: productData, error } = await supabase
+        .from("item_master")
+        .select("product_name, item_type, uom, product_code");
 
-      setMasterItemsLoading(true);
-      setMasterItemsError(null);
+      if (error) throw error;
 
-      try {
-        // Fetch all products from project_master
-        const { data: productData, error } = await supabase
-          .from("project_master")
-          .select("product_name, item_type, uom"); // Changed from group_head to item_type
+      const allItems = (productData || [])
+        .filter(p => p.product_name)
+        .map(p => ({
+          name: p.product_name,
+          group: (p.item_type || "").trim().toLowerCase(),
+          uom: (p.uom || "Nos").trim(),
+          code: p.product_code || ""
+        }));
 
-        if (error) throw error;
+      console.log("✅ item_master loaded:", allItems.length);
+      setAllMasterItems(allItems);
 
-        const allItems: { name: string; group: string; uom: string }[] = [];
+      // ✅ item_master ke UOM bhi uomOptions mein add karo
+      const itemUoms = [...new Set(allItems.map(i => i.uom).filter(Boolean))];
+      setUomOptions(prev => [...new Set([...prev, ...itemUoms])]);
 
-        productData?.forEach(product => {
-          if (product.product_name && product.item_type) { // Changed from group_head to item_type
-            allItems.push({
-              name: product.product_name,
-              group: product.item_type, // Changed from group_head to item_type
-              uom: product.uom || "",
-            });
-          }
-        });
+    } catch (err) {
+      console.error("Error:", err);
+      setMasterItemsError("Failed to load master items");
+    } finally {
+      setMasterItemsLoading(false);
+    }
+  };
 
-        setAllMasterItems(allItems);
-      } catch (error) {
-        console.error("Error loading master items:", error);
-        setMasterItemsError("Failed to load master items");
-      } finally {
-        setMasterItemsLoading(false);
-      }
-    };
-
-    loadAllMasterItems();
-  }, []);
-
-
+  loadAllMasterItems();
+}, []);
 
 
   // Reset vendor when item type changes
@@ -653,9 +643,16 @@ const PlanningForm: React.FC<PlanningFormProps> = ({
     } else {
       // For non-BOS items, filter by item_type
       const normalizedType = normalizeStr(formData.itemType);
-      return allMasterItems.filter(
-        (item) => normalizeStr(item.group) === normalizedType
-      );
+
+      console.log("Selected ItemType:", formData.itemType);
+console.log("Normalized:", normalizedType);
+console.log("All Items:", allMasterItems);
+
+
+      return allMasterItems.filter((item) => {
+        const itemGroup = normalizeStr(item.group);
+        return itemGroup === normalizedType || itemGroup.includes(normalizedType);
+      });
     }
   };
 
@@ -693,13 +690,7 @@ const PlanningForm: React.FC<PlanningFormProps> = ({
     }
   }, [formData.packingDetailSelect, formData.itemType, allProducts]);
 
-  const [uomOptions, setUomOptions] = useState<string[]>([
-    "Kg",
-    "Pieces",
-    "Meters",
-    "Liters",
-    "Sets",
-  ]);
+
 
   // Helper to normalize strings (for case-insensitive, space-tolerant compares)
   const normalizeStr = (s: string) =>
@@ -771,14 +762,24 @@ const PlanningForm: React.FC<PlanningFormProps> = ({
   const handleItemNameChange = (productId: string, itemName: string) => {
     updateProduct(productId, "itemName", itemName);
 
-    // Auto-fill UOM for all item types
-    const matchingItem = getFilteredItemsForDropdown().find(
-      (item) => normalizeStr(item.name) === normalizeStr(itemName)
-    );
-    if (matchingItem && matchingItem.uom) {
-      updateProduct(productId, "uom", matchingItem.uom);
-    }
-  };
+const matchingItem = getFilteredItemsForDropdown().find(
+  (item) => normalizeStr(item.name) === normalizeStr(itemName)
+);
+
+console.log("[Matching Item] Result:", matchingItem);
+
+if (matchingItem) {
+  updateProduct(productId, "uom", matchingItem.uom);
+
+  setProducts(prev =>
+    prev.map(p =>
+      p.id === productId
+        ? { ...p, itemCode: matchingItem.code || "" }
+        : p
+    )
+  );
+}
+};
 
   const deleteProduct = (id: string) => {
     setProducts((prev) => prev.filter((product) => product.id !== id));
@@ -883,7 +884,7 @@ const PlanningForm: React.FC<PlanningFormProps> = ({
         item_type: formData.itemType,
         state: formData.state,
         department: formData.department,
-        approved_status: "Pending"
+       
       };
 
       if (initialData) {
@@ -907,12 +908,15 @@ const PlanningForm: React.FC<PlanningFormProps> = ({
       }
 
       // ---------- INSERT PRODUCTS ----------
-      const itemRows = productsToSubmit.map((prod) => {
+      const itemRows = productsToSubmit.map((prod, index) => {
         const totalQty = Number(prod.qty || 0) * Number(prod.qtySet || 1);
+        
+        console.log(`[Submit Item] Serial: ${index + 1}, Item: ${prod.itemName}, Code: ${prod.itemCode}`);
 
         return {
           planning_no: nextPN,
           item: prod.itemName,
+          item_code: prod.itemCode || "",
           qty: totalQty,
           description: prod.remarks || "", // mapped to frontend 'Remark' field
           uom: prod.uom || ""             // mapped to the new 'UOM' column
@@ -1760,7 +1764,7 @@ const PlanningForm: React.FC<PlanningFormProps> = ({
                               <input
                                 type="text"
                                 value={product.remarks}
-                                onChange={(e) =>
+                                onChange={(e) => 
                                   updateProduct(
                                     product.id,
                                     "remarks",

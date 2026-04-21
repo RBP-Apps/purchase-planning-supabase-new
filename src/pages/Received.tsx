@@ -103,7 +103,7 @@ const POList = () => {
       if (formData.Rate === undefined || formData.Rate === null || formData.Rate === "" || Number(formData.Rate) <= 0) {
         errors["Rate"] = "Required";
       }
-      
+
       const gstValue = formData["GST %"];
       if (gstValue === undefined || gstValue === null || gstValue === "" || isNaN(Number(gstValue))) {
         errors["GST %"] = "Required";
@@ -441,7 +441,7 @@ const POList = () => {
       if (updateError) throw updateError;
 
       alert("Item marked as complete.");
-      
+
       // Update local state to remove the item instantly from the modal
       setGroupItems(prev => {
         const remainingItems = prev.filter(i => i["Item Name"] !== item["Item Name"]);
@@ -450,7 +450,7 @@ const POList = () => {
         }
         return remainingItems;
       });
-      
+
       // Refresh the main table data
       fetchData();
     } catch (err) {
@@ -776,7 +776,7 @@ const POList = () => {
     const discountPercent = Number(item["Discount"]) || 0;
     const gst = Number(item["GST %"]) || 0;
     const transportCharge = Number(item.TransportCharge) || 0;
-    
+
     const baseAmount = receivedQty * rate;
     const discountAmount = baseAmount * (discountPercent / 100);
     const gstAmount = baseAmount * (gst / 100);
@@ -967,11 +967,10 @@ const POList = () => {
                                   View Document
                                 </a>
                               ) : colKey === "Status" ? (
-                                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                  String(value).toLowerCase() === "approved" 
-                                    ? "bg-green-100 text-green-800" 
+                                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${String(value).toLowerCase() === "approved"
+                                    ? "bg-green-100 text-green-800"
                                     : "bg-yellow-100 text-yellow-800"
-                                }`}>
+                                  }`}>
                                   {value || "Pending"}
                                 </span>
                               ) : typeof value === "number" ? (
@@ -1383,6 +1382,9 @@ const POList = () => {
                             <thead className="bg-gray-50">
                               <tr>
                                 <th className="px-2 py-2 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap sm:px-4 sm:py-3">
+                                  Planning No
+                                </th>
+                                <th className="px-2 py-2 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap sm:px-4 sm:py-3">
                                   PO No
                                 </th>
                                 <th className="px-2 py-2 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap sm:px-4 sm:py-3">
@@ -1421,6 +1423,11 @@ const POList = () => {
                                 <tr key={itemIndex}>
                                   <td className="px-2 py-2 whitespace-nowrap sm:px-4 sm:py-3">
                                     <span className="text-xs font-medium text-gray-900 sm:text-sm">
+                                      {item["Planning No"] || "-"}
+                                    </span>
+                                  </td>
+                                  <td className="px-2 py-2 whitespace-nowrap sm:px-4 sm:py-3">
+                                    <span className="text-xs font-medium text-gray-900 sm:text-sm">
                                       {item["PO No"]}
                                     </span>
                                   </td>
@@ -1452,9 +1459,8 @@ const POList = () => {
                                           itemIndex
                                         )
                                       }
-                                      className={`block px-2 py-1 w-20 text-xs border rounded sm:px-3 sm:py-2 sm:w-32 sm:text-sm ${
-                                        formErrors[`Received Qty-${itemIndex}`] ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-300'
-                                      }`}
+                                      className={`block px-2 py-1 w-20 text-xs border rounded sm:px-3 sm:py-2 sm:w-32 sm:text-sm ${formErrors[`Received Qty-${itemIndex}`] ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-300'
+                                        }`}
                                       min="0"
                                       max={item["Qty"]}
                                     />
@@ -1490,9 +1496,8 @@ const POList = () => {
                                           itemIndex
                                         )
                                       }
-                                      className={`block px-2 py-1 w-20 text-xs border rounded sm:px-3 sm:py-2 sm:w-32 sm:text-sm ${
-                                        formErrors[`Rate-${itemIndex}`] ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-300'
-                                      }`}
+                                      className={`block px-2 py-1 w-20 text-xs border rounded sm:px-3 sm:py-2 sm:w-32 sm:text-sm ${formErrors[`Rate-${itemIndex}`] ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-300'
+                                        }`}
                                       min="0"
                                       step="0.01"
                                     />
@@ -1515,9 +1520,8 @@ const POList = () => {
                                           itemIndex
                                         )
                                       }
-                                      className={`block px-2 py-1 w-20 text-xs border rounded sm:px-3 sm:py-2 sm:w-32 sm:text-sm ${
-                                        formErrors[`GST %-${itemIndex}`] ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-300'
-                                      }`}
+                                      className={`block px-2 py-1 w-20 text-xs border rounded sm:px-3 sm:py-2 sm:w-32 sm:text-sm ${formErrors[`GST %-${itemIndex}`] ? 'border-red-500 ring-1 ring-red-500' : 'border-gray-300'
+                                        }`}
                                       min="0"
                                       max="100"
                                     />

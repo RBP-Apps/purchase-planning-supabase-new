@@ -522,11 +522,8 @@ const Dashboard = () => {
           planning_no,
           date,
           vendor_name,
-          approved_status,
-          planning_item_master (
-            id,
-            status
-          )
+          status,
+          planning_item_master (id)
         `)
         .order("id", { ascending: false });
 
@@ -596,44 +593,25 @@ const Dashboard = () => {
       const vendorName = row.vendor_name?.toString().trim() || "";
       if (vendorName) vendorSet.add(vendorName);
 
-      // Process status
-      const masterStatus = row.approved_status?.toString().toLowerCase() || "";
+      // Process status - status comes primarily from planning_master now!!
+      const masterStatus = row.status?.toString().toLowerCase() || "";
       const items = row.planning_item_master || [];
 
-      if (items.length > 0) {
-        // Count statuses from items
-        items.forEach((item: any) => {
-          const itemStatus = item.status?.toString().toLowerCase() || "";
-          if (itemStatus === "approved") {
-            approved++;
-            approvedOrders.push({
-              id: `approved-${item.id || index}`,
-              planningNo: row.planning_no || "",
-              description: `Item in ${row.planning_no || "N/A"}`,
-            });
-          } else if (
-            itemStatus === "pending" ||
-            itemStatus === "pending review" ||
-            !itemStatus
-          ) {
-            pending++;
-          } else if (itemStatus === "rejected") {
-            rejected++;
-          }
+      if (masterStatus === "approved") {
+        approved++;
+        approvedOrders.push({
+          id: `approved-${row.id || index}`,
+          planningNo: row.planning_no || "",
+          description: `${items.length} item(s) in ${row.planning_no || "N/A"}`,
         });
-      } else {
-        // Fallback to master status if no items (though there should be)
-        if (masterStatus === "approved") {
-          approved++;
-        } else if (
-          masterStatus === "pending" ||
-          masterStatus === "pending review" ||
-          !masterStatus
-        ) {
-          pending++;
-        } else if (masterStatus === "rejected") {
-          rejected++;
-        }
+      } else if (
+        masterStatus === "pending" ||
+        masterStatus === "pending review" ||
+        !masterStatus
+      ) {
+        pending++;
+      } else if (masterStatus === "rejected") {
+        rejected++;
       }
 
       // Monthly stats (using date field)
@@ -650,7 +628,7 @@ const Dashboard = () => {
               monthlyStats[month] = { planning: 0, approved: 0, received: 0 };
             }
             monthlyStats[month].planning++;
-            if (status === "approved") monthlyStats[month].approved++;
+            if (masterStatus === "approved") monthlyStats[month].approved++;
           }
         } catch (e) {
           console.warn(`Invalid date format for row: ${dateValue}`);

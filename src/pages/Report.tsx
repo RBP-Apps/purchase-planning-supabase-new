@@ -86,6 +86,7 @@ const VendorDataPage = () => {
 
         return {
           id: index + 1,
+          planningNo: pNo || "-",
           serialNumber: rId || "-", 
           vendorName: vendorName, 
           totalQty: totalQty.toString(),
@@ -193,6 +194,7 @@ const VendorDataPage = () => {
           <table className="min-w-full border border-gray-200 rounded text-sm text-left">
             <thead className="bg-gray-50">
               <tr>
+                <th className="px-6 py-3 border-b border-gray-200">Planning No</th>
                 <th className="px-6 py-3 border-b border-gray-200">Receipt ID</th>
                 <th className="px-6 py-3 border-b border-gray-200">Vendor Name</th>
                 <th className="px-6 py-3 border-b border-gray-200">Total Qty</th>
@@ -207,6 +209,9 @@ const VendorDataPage = () => {
                   key={row.id}
                   className="hover:bg-gray-100 transition-colors duration-150"
                 >
+                  <td className="px-6 py-4 border-b border-gray-200 whitespace-nowrap">
+                    {row.planningNo}
+                  </td>
                   <td className="px-6 py-4 border-b border-gray-200 whitespace-nowrap">
                     {row.serialNumber}
                   </td>

@@ -26,78 +26,78 @@ const Approval = () => {
 
 
   const loadRows = async () => {
-  setLoading(true);
-  setError(null);
+    setLoading(true);
+    setError(null);
 
-  try {
+    try {
 
-    const { data, error } = await supabase
-      .from("planning_master")
-      .select(`*, planning_item_master (*)`)
-      .order("id", { ascending: false });
+      const { data, error } = await supabase
+        .from("planning_master")
+        .select(`*, planning_item_master (id, planning_no, item, qty, description, uom)`)
+        .order("id", { ascending: false });
 
-    if (error) throw error;
+      if (error) throw error;
 
-    const transformedData: any[] = [];
-    if (data) {
-      data.forEach((master: any) => {
-        const items = master.planning_item_master || [];
-        if (items.length === 0) {
-          transformedData.push({
-            id: `m-${master.id}`,
-            masterId: master.id,
-            planningNo: master.planning_no || "",
-            serialNumber: "-",
-            date: master.date || "",
-            requesterName: master.requester_name || "",
-            projectName: master.project || "",
-            firmName: master.firm || "",
-            vendorName: master.vendor_name || "",
-            itemType: master.item_type || "",
-            itemName: "-",
-            qty: "0",
-            remarks: "-",
-            state: master.state || "",
-            department: master.department || "",
-            status: master.status || "Pending",
-            userRemarks: master.user_remarks || "", 
-            planned: "Yes",
-          });
-        } else {
-          items.forEach((item: any, idx: number) => {
+      const transformedData: any[] = [];
+      if (data) {
+        data.forEach((master: any) => {
+          const items = master.planning_item_master || [];
+          if (items.length === 0) {
             transformedData.push({
-              id: item.id,
+              id: `m-${master.id}`,
               masterId: master.id,
               planningNo: master.planning_no || "",
-              serialNumber: String(idx + 1),
+              serialNumber: "-",
               date: master.date || "",
               requesterName: master.requester_name || "",
               projectName: master.project || "",
               firmName: master.firm || "",
               vendorName: master.vendor_name || "",
               itemType: master.item_type || "",
-              itemName: item.item || "",
-              qty: String(item.qty) || "0",
-              remarks: item.description || "",
+              itemName: "-",
+              qty: "0",
+              remarks: "-",
               state: master.state || "",
               department: master.department || "",
-              status: item.status || master.status || "Pending",
-              userRemarks: item.user_remarks || "", 
-              planned: "Yes"
+              status: master.status || "Pending",
+              userRemarks: master.user_remarks || "",
+              planned: "Yes",
             });
-          });
-        }
-      });
+          } else {
+            items.forEach((item: any, idx: number) => {
+              transformedData.push({
+                id: item.id,
+                masterId: master.id,
+                planningNo: master.planning_no || "",
+                serialNumber: String(idx + 1),
+                date: master.date || "",
+                requesterName: master.requester_name || "",
+                projectName: master.project || "",
+                firmName: master.firm || "",
+                vendorName: master.vendor_name || "",
+                itemType: master.item_type || "",
+                itemName: item.item || "",
+                qty: String(item.qty) || "0",
+                remarks: item.description || "",
+                state: master.state || "",
+                department: master.department || "",
+                status: item.status || master.status || "Pending",
+                userRemarks: item.user_remarks || "",
+                planned: "Yes"
+              });
+            });
+          }
+        });
+      }
+
+      setRows(transformedData);
+
+    } catch (e: any) {
+      setError(e?.message || "Failed to load approval data");
+    } finally {
+      setLoading(false);
     }
-
-    setRows(transformedData);
-
-  } catch (e: any) {
-    setError(e?.message || "Failed to load approval data");
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   useEffect(() => {
     loadRows();
@@ -171,7 +171,7 @@ const Approval = () => {
     }
   };
 
-  
+
   const formatDateTime = (date: any) => {
     // Convert to Date object if it's a timestamp
     const dateObj = typeof date === "number" ? new Date(date) : date;
@@ -190,74 +190,74 @@ const Approval = () => {
 
   const handleApproval = async (id: number, action: "approve" | "reject") => {
 
-  if (submitting[id]) return;
+    if (submitting[id]) return;
 
-  const newStatus = action === "approve" ? "Approved" : "Rejected";
+    const newStatus = action === "approve" ? "Approved" : "Rejected";
 
-  const item = rows.find((r) => r.id === id);
+    const item = rows.find((r) => r.id === id);
 
-  if (!item) return;
+    if (!item) return;
 
-  if (newStatus === "Rejected" && !item.userRemarks?.trim()) {
-    setNotice({
-      type: "error",
-      message: "Please add remarks before rejecting.",
-    });
-    setTimeout(() => setNotice(null), 3000);
-    return;
-  }
+    if (newStatus === "Rejected" && !item.userRemarks?.trim()) {
+      setNotice({
+        type: "error",
+        message: "Please add remarks before rejecting.",
+      });
+      setTimeout(() => setNotice(null), 3000);
+      return;
+    }
 
-  try {
+    try {
 
-    setSubmitting((s) => ({ ...s, [id]: true }));
+      setSubmitting((s) => ({ ...s, [id]: true }));
 
-    const planningNo = item.planningNo;
+      const planningNo = item.planningNo;
 
-    const updateData: any = {
-      status: newStatus,
-      user_remarks: item.userRemarks || ""
-    };
+      const updateData: any = {
+        status: newStatus,
+        user_remarks: item.userRemarks || ""
+      };
 
-    const { error } = await supabase
-      .from("planning_item_master")
-      .update(updateData)
-      .eq("id", id);
+      const { error } = await supabase
+        .from("planning_master")
+        .update(updateData)
+        .eq("id", item.masterId);
 
-    if (error) throw error;
+      if (error) throw error;
 
-    const newRows = rows.map((r) =>
-      r.id === id
-        ? {
+      const newRows = rows.map((r) =>
+        r.masterId === item.masterId
+          ? {
             ...r,
             status: newStatus
           }
-        : r
-    );
+          : r
+      );
 
-    setRows(newRows);
+      setRows(newRows);
 
-    setNotice({
-      type: "success",
-      message: `Decision saved: ${newStatus}`,
-    });
+      setNotice({
+        type: "success",
+        message: `Decision saved: ${newStatus}`,
+      });
 
-    setTimeout(() => setNotice(null), 2200);
+      setTimeout(() => setNotice(null), 2200);
 
-  } catch (e: any) {
+    } catch (e: any) {
 
-    console.error(e);
+      console.error(e);
 
-    setNotice({
-      type: "error",
-      message: e?.message || "Failed to save decision",
-    });
+      setNotice({
+        type: "error",
+        message: e?.message || "Failed to save decision",
+      });
 
-    setTimeout(() => setNotice(null), 3500);
+      setTimeout(() => setNotice(null), 3500);
 
-  } finally {
-    setSubmitting((s) => ({ ...s, [id]: false }));
-  }
-};
+    } finally {
+      setSubmitting((s) => ({ ...s, [id]: false }));
+    }
+  };
 
 
 
@@ -380,8 +380,8 @@ const Approval = () => {
             <button
               onClick={() => setActiveTab("pending")}
               className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors duration-200 ${activeTab === "pending"
-                  ? "border-blue-500 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                ? "border-blue-500 text-blue-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
                 }`}
             >
               <div className="flex items-center space-x-2">
@@ -392,8 +392,8 @@ const Approval = () => {
             <button
               onClick={() => setActiveTab("history")}
               className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors duration-200 ${activeTab === "history"
-                  ? "border-blue-500 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                ? "border-blue-500 text-blue-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
                 }`}
             >
               <div className="flex items-center space-x-2">
@@ -522,8 +522,8 @@ const Approval = () => {
                           onClick={() => handleApproval(item.id, "approve")}
                           disabled={!!submitting[item.id]}
                           className={`p-1 rounded transition-colors duration-200 ${submitting[item.id]
-                              ? "text-green-300 cursor-not-allowed"
-                              : "text-green-600 hover:text-green-900"
+                            ? "text-green-300 cursor-not-allowed"
+                            : "text-green-600 hover:text-green-900"
                             }`}
                           title="Approve"
                         >
@@ -533,8 +533,8 @@ const Approval = () => {
                           onClick={() => handleApproval(item.id, "reject")}
                           disabled={!!submitting[item.id]}
                           className={`p-1 rounded transition-colors duration-200 ${submitting[item.id]
-                              ? "text-red-300 cursor-not-allowed"
-                              : "text-red-600 hover:text-red-900"
+                            ? "text-red-300 cursor-not-allowed"
+                            : "text-red-600 hover:text-red-900"
                             }`}
                           title="Reject"
                         >
