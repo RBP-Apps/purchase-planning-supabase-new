@@ -18,10 +18,17 @@ import {
 } from 'lucide-react';
 
 // Admin client uses service role key — bypasses RLS for Settings master data
-const supabaseAdmin = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_SERVICE_KEY
-);
+const supabaseAdminUrl = import.meta.env.VITE_SUPABASE_URL || "";
+const supabaseAdminKey = import.meta.env.VITE_SUPABASE_SERVICE_KEY || "";
+
+if (!supabaseAdminUrl || !supabaseAdminKey) {
+  console.error(
+    "Supabase Admin configuration is missing. Please check your .env file."
+  );
+}
+
+const supabaseAdmin = createClient(supabaseAdminUrl, supabaseAdminKey);
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
