@@ -531,9 +531,12 @@ const VendorMasterSection = () => {
                   <th className="px-5 py-3 sticky left-0 z-30 bg-slate-50 text-xs font-semibold text-slate-600 uppercase tracking-wider border-r border-slate-100">Actions</th>
                   <th className="px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Vendor ID</th>
                   <th className="px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider min-w-[150px]">Vendor Name</th>
+                  <th className="px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Items Type</th>
                   <th className="px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">GSTIN</th>
                   <th className="px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Contact</th>
+                  <th className="px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Mobile</th>
                   <th className="px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Email</th>
+                  <th className="px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Associated Modules</th>
                   <th className="px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider min-w-[200px]">Address</th>
                 </tr>
               </thead>
@@ -548,9 +551,14 @@ const VendorMasterSection = () => {
                     </td>
                     <td className="px-5 py-2.5 text-xs font-mono font-medium text-slate-500">{record.vendor_id}</td>
                     <td className="px-5 py-2.5 text-sm font-semibold text-slate-800">{record.vendor_name}</td>
+                    <td className="px-5 py-2.5 text-sm">
+                      {record.items_type && <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded border border-indigo-100 text-xs font-medium">{record.items_type}</span>}
+                    </td>
                     <td className="px-5 py-2.5 text-xs font-mono text-slate-500">{record.gstin}</td>
                     <td className="px-5 py-2.5 text-sm text-slate-600">{record.contact_person}</td>
+                    <td className="px-5 py-2.5 text-sm text-slate-600">{record.mobile}</td>
                     <td className="px-5 py-2.5 text-sm text-blue-600 underline">{record.email}</td>
+                    <td className="px-5 py-2.5 text-sm text-slate-500">{record.associated_modules}</td>
                     <td className="px-5 py-2.5 text-sm text-slate-500 truncate max-w-[250px]">{record.address}</td>
                   </tr>
                 ))}
@@ -579,6 +587,10 @@ const VendorMasterSection = () => {
                     <input name="vendor_name" value={formData.vendor_name} onChange={handleInputChange} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:ring-1 focus:ring-blue-500 outline-none" required />
                   </div>
                   <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-500 ml-1">Items Type</label>
+                    <input name="items_type" value={formData.items_type} onChange={handleInputChange} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:ring-1 focus:ring-blue-500 outline-none" placeholder="e.g. CABLE, PUMP, BOS" />
+                  </div>
+                  <div className="space-y-1">
                     <label className="text-xs font-semibold text-slate-500 ml-1">GSTIN</label>
                     <input name="gstin" value={formData.gstin} onChange={handleInputChange} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:ring-1 focus:ring-blue-500 outline-none" />
                   </div>
@@ -586,10 +598,18 @@ const VendorMasterSection = () => {
                     <label className="text-xs font-semibold text-slate-500 ml-1">Contact Person</label>
                     <input name="contact_person" value={formData.contact_person} onChange={handleInputChange} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:ring-1 focus:ring-blue-500 outline-none" />
                   </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-500 ml-1">Mobile</label>
+                    <input name="mobile" value={formData.mobile} onChange={handleInputChange} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:ring-1 focus:ring-blue-500 outline-none" placeholder="e.g. 9876543210" />
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-500 ml-1">Email</label>
                   <input name="email" type="email" value={formData.email} onChange={handleInputChange} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:ring-1 focus:ring-blue-500 outline-none" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-500 ml-1">Associated Modules</label>
+                  <input name="associated_modules" value={formData.associated_modules} onChange={handleInputChange} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:ring-1 focus:ring-blue-500 outline-none" placeholder="e.g. Planning, PO Generator" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-slate-500 ml-1">Address</label>
