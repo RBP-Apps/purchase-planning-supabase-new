@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { createClient } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 import { 
@@ -187,6 +188,12 @@ const ProjectMasterSection = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState<MasterRecord>(INITIAL_MASTER_FORM);
 
+  useEffect(() => {
+    if (showModal) document.body.style.overflow = 'hidden';
+    else document.body.style.overflow = 'unset';
+    return () => { document.body.style.overflow = 'unset'; };
+  }, [showModal]);
+
   useEffect(() => { fetchRecords(); }, []);
 
   const fetchRecords = async () => {
@@ -315,8 +322,8 @@ const ProjectMasterSection = () => {
       </div>
 
       {/* Modern Modal */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+      {showModal && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/95 backdrop-blur-md">
           <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <h2 className="text-lg font-bold text-slate-800">{editingRecord ? "Edit Project Master" : "New Project Master"}</h2>
@@ -389,7 +396,8 @@ const ProjectMasterSection = () => {
             </div>
 
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
@@ -408,6 +416,12 @@ const VendorMasterSection = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState<VendorRecord>(INITIAL_VENDOR_FORM);
 
+  useEffect(() => {
+    if (showModal) document.body.style.overflow = 'hidden';
+    else document.body.style.overflow = 'unset';
+    return () => { document.body.style.overflow = 'unset'; };
+  }, [showModal]);
+
   useEffect(() => { fetchRecords(); }, []);
 
   const fetchRecords = async () => {
@@ -419,9 +433,25 @@ const VendorMasterSection = () => {
     } catch (err) { console.error("Error fetching vendor_master:", err); } finally { setLoading(false); }
   };
 
-  const handleOpenModal = (record: VendorRecord | null = null) => {
+  const generateVendorId = async (): Promise<string> => {
+    try {
+      const { data } = await supabaseAdmin.from("vendor_master").select("vendor_id");
+      let maxNum = 0;
+      (data || []).forEach((r) => {
+        const match = String(r.vendor_id || "").match(/RBPV(\d+)/i);
+        if (match) maxNum = Math.max(maxNum, parseInt(match[1], 10));
+      });
+      return `RBPV${String(maxNum + 1).padStart(6, "0")}`;
+    } catch { return `RBPV${Date.now().toString().slice(-6)}`; }
+  };
+
+  const handleOpenModal = async (record: VendorRecord | null = null) => {
     if (record) { setEditingRecord(record); setFormData({ ...INITIAL_VENDOR_FORM, ...record }); }
-    else { setEditingRecord(null); setFormData(INITIAL_VENDOR_FORM); }
+    else {
+      const newId = await generateVendorId();
+      setEditingRecord(null);
+      setFormData({ ...INITIAL_VENDOR_FORM, vendor_id: newId });
+    }
     setShowModal(true);
   };
 
@@ -530,8 +560,8 @@ const VendorMasterSection = () => {
         )}
       </div>
 
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+      {showModal && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/95 backdrop-blur-md">
           <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <h2 className="text-lg font-bold text-slate-800">{editingRecord ? "Update Vendor" : "New Vendor"}</h2>
@@ -541,8 +571,8 @@ const VendorMasterSection = () => {
               <form id="vendor-form" onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-500 ml-1">Vendor ID *</label>
-                    <input name="vendor_id" value={formData.vendor_id} onChange={handleInputChange} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:ring-1 focus:ring-blue-500 outline-none" required disabled={!!editingRecord} />
+                    <label className="text-xs font-semibold text-slate-500 ml-1">Vendor ID <span className="text-green-600 text-[10px] font-normal">(auto-generated)</span></label>
+                    <input name="vendor_id" value={formData.vendor_id} readOnly className="w-full px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-sm font-mono font-bold text-green-700 outline-none cursor-default" />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-slate-500 ml-1">Vendor Name *</label>
@@ -576,7 +606,8 @@ const VendorMasterSection = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
@@ -596,6 +627,12 @@ const ItemMasterSection = () => {
   const [tableError, setTableError] = useState<string | null>(null);
   const [formData, setFormData] = useState<ItemRecord>(INITIAL_ITEM_FORM);
 
+  useEffect(() => {
+    if (showModal) document.body.style.overflow = 'hidden';
+    else document.body.style.overflow = 'unset';
+    return () => { document.body.style.overflow = 'unset'; };
+  }, [showModal]);
+
   useEffect(() => { fetchRecords(); }, []);
 
   const fetchRecords = async () => {
@@ -612,9 +649,25 @@ const ItemMasterSection = () => {
     } catch (err) { console.error("Error fetching item_master:", err); } finally { setLoading(false); }
   };
 
-  const handleOpenModal = (record: ItemRecord | null = null) => {
+  const generateProductCode = async (): Promise<string> => {
+    try {
+      const { data } = await supabaseAdmin.from("item_master").select("product_code");
+      let maxNum = 0;
+      (data || []).forEach((r) => {
+        const match = String(r.product_code || "").match(/RBPI(\d+)/i);
+        if (match) maxNum = Math.max(maxNum, parseInt(match[1], 10));
+      });
+      return `RBPI${String(maxNum + 1).padStart(6, "0")}`;
+    } catch { return `RBPI${Date.now().toString().slice(-6)}`; }
+  };
+
+  const handleOpenModal = async (record: ItemRecord | null = null) => {
     if (record) { setEditingRecord(record); setFormData({ ...INITIAL_ITEM_FORM, ...record }); }
-    else { setEditingRecord(null); setFormData(INITIAL_ITEM_FORM); }
+    else {
+      const newCode = await generateProductCode();
+      setEditingRecord(null);
+      setFormData({ ...INITIAL_ITEM_FORM, product_code: newCode });
+    }
     setShowModal(true);
   };
 
@@ -725,8 +778,8 @@ const ItemMasterSection = () => {
         )}
       </div>
 
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+      {showModal && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/95 backdrop-blur-md">
           <div className="bg-white w-full max-w-xl rounded-2xl shadow-2xl flex flex-col overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <h2 className="text-lg font-bold text-slate-800">{editingRecord ? "Update Item" : "New Item Master"}</h2>
@@ -736,8 +789,8 @@ const ItemMasterSection = () => {
               <form id="item-form" onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-500 ml-1">Product Code *</label>
-                    <input name="product_code" value={formData.product_code} onChange={handleInputChange} disabled={!!editingRecord} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:ring-1 focus:ring-blue-500 outline-none disabled:opacity-50" required />
+                    <label className="text-xs font-semibold text-slate-500 ml-1">Product Code <span className="text-green-600 text-[10px] font-normal">(auto-generated)</span></label>
+                    <input name="product_code" value={formData.product_code} readOnly className="w-full px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-sm font-mono font-bold text-green-700 outline-none cursor-default" />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-slate-500 ml-1">UOM</label>
@@ -762,7 +815,8 @@ const ItemMasterSection = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
