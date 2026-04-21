@@ -277,14 +277,14 @@ const fetchDropdownData = async () => {
     // project_master se sirf project, firm, state, department
     const { data: pmData, error: pmError } = await supabase
       .from("project_master")
-      .select("project_name, firm_name, uom, state, department_name");
+      .select("project_name, firm_name,  state, department_name");
 
     if (pmError) throw pmError;
 
     if (pmData) {
       setProjectOptions([...new Set(pmData.map(p => p.project_name).filter(Boolean))]);
       setFirmOptions([...new Set(pmData.map(f => f.firm_name).filter(Boolean))]);
-      setUomOptions([...new Set(pmData.map(u => u.uom).filter(Boolean))]);
+      
       setStateOptions([...new Set(pmData.map(s => s.state).filter(Boolean))]);
       setDepartmentOptionsFlat([...new Set(pmData.map(d => d.department_name).filter(Boolean))]);
 
