@@ -82,6 +82,13 @@ interface ItemRecord {
   updated_at?: string;
 }
 
+interface TermRecord {
+  id?: number;
+  item_type: string;
+  terms_and_conditions: string;
+  created_at?: string;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Initial Forms
 // ─────────────────────────────────────────────────────────────────────────────
@@ -103,11 +110,15 @@ const INITIAL_ITEM_FORM: ItemRecord = {
   product_code: "", item_type: "", product_name: "", uom: "",
 };
 
+const INITIAL_TERM_FORM: TermRecord = {
+  item_type: "", terms_and_conditions: "",
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-type ActiveTab = "project" | "vendor" | "item";
+type ActiveTab = "project" | "vendor" | "item" | "term";
 
 const Setting = () => {
   const [activeTab, setActiveTab] = useState<ActiveTab>("project");
@@ -160,6 +171,17 @@ const Setting = () => {
               <Package className="w-4 h-4 mr-2" />
               Item Master
             </button>
+            <button
+              onClick={() => setActiveTab('term')}
+              className={`flex items-center px-5 py-2 rounded-lg text-sm font-semibold transition-all ${
+                activeTab === 'term'
+                  ? 'bg-white text-blue-700 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              <CheckCircle2 className="w-4 h-4 mr-2" />
+              Terms & Conditions
+            </button>
           </div>
         </div>
 
@@ -168,6 +190,7 @@ const Setting = () => {
           {activeTab === "project" && <ProjectMasterSection />}
           {activeTab === "vendor" && <VendorMasterSection />}
           {activeTab === "item" && <ItemMasterSection />}
+          {activeTab === "term" && <TermAndConditionSection />}
         </div>
 
       </div>
@@ -832,6 +855,171 @@ const ItemMasterSection = () => {
               <button type="submit" form="item-form" disabled={isSubmitting} className="px-6 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg shadow-md hover:bg-blue-700 transition-colors flex items-center active:scale-95 disabled:opacity-50">
                 {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
                 {editingRecord ? "Update Item" : "Save Item"}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TERM AND CONDITION SECTION
+// ─────────────────────────────────────────────────────────────────────────────
+
+const TermAndConditionSection = () => {
+  const [records, setRecords] = useState<TermRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<TermRecord | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formData, setFormData] = useState<TermRecord>(INITIAL_TERM_FORM);
+
+  useEffect(() => {
+    if (showModal) document.body.style.overflow = 'hidden';
+    else document.body.style.overflow = 'unset';
+    return () => { document.body.style.overflow = 'unset'; };
+  }, [showModal]);
+
+  useEffect(() => { fetchRecords(); }, []);
+
+  const fetchRecords = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabaseAdmin.from("term_and_condition").select("*").order("id", { ascending: false });
+      if (error) throw error;
+      setRecords(data || []);
+    } catch (err) { console.error("Error fetching term_and_condition:", err); } finally { setLoading(false); }
+  };
+
+  const handleOpenModal = (record: TermRecord | null = null) => {
+    if (record) { setEditingRecord(record); setFormData({ ...INITIAL_TERM_FORM, ...record }); }
+    else { setEditingRecord(null); setFormData(INITIAL_TERM_FORM); }
+    setShowModal(true);
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      if (editingRecord) {
+        const { error } = await supabaseAdmin.from("term_and_condition").update(formData).eq("id", editingRecord.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabaseAdmin.from("term_and_condition").insert([formData]);
+        if (error) throw error;
+      }
+      setShowModal(false);
+      fetchRecords();
+    } catch (err) { console.error(err); } finally { setIsSubmitting(false); }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm("Are you sure?")) return;
+    try {
+      const { error } = await supabaseAdmin.from("term_and_condition").delete().eq("id", id);
+      if (error) throw error;
+      fetchRecords();
+    } catch (err) { console.error(err); }
+  };
+
+  const filteredRecords = records.filter((r) =>
+    Object.values(r).some((val) => String(val || "").toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
+  return (
+    <>
+      <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
+        <div className="relative w-full md:w-96">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search terms..."
+            className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none shadow-sm"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+        <button 
+          onClick={() => handleOpenModal()} 
+          className="w-full md:w-auto bg-blue-600 text-white px-6 py-2.5 rounded-xl font-semibold flex items-center justify-center shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all active:scale-95 text-sm"
+        >
+          <Plus className="w-4 h-4 mr-2" /> Add New Term
+        </button>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-16">
+            <Loader2 className="w-8 h-8 animate-spin text-blue-600 mb-3" />
+            <p className="text-slate-500 font-medium text-sm">Loading terms...</p>
+          </div>
+        ) : filteredRecords.length === 0 ? (
+          <div className="py-16 text-center opacity-70">
+            <AlertCircle className="w-10 h-10 mx-auto mb-2 text-slate-400" />
+            <p className="text-md font-semibold text-slate-600">No terms available</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50/50 border-b border-slate-200">
+                  <th className="px-5 py-3 sticky left-0 z-30 bg-slate-50 text-xs font-semibold text-slate-600 uppercase tracking-wider border-r border-slate-100">Actions</th>
+                  <th className="px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">Item Type</th>
+                  <th className="px-5 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider min-w-[400px]">Terms & Conditions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredRecords.map((record) => (
+                  <tr key={record.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-5 py-2.5 sticky left-0 z-20 bg-white border-r border-slate-50 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => handleOpenModal(record)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"><Edit className="w-4 h-4" /></button>
+                        <button onClick={() => handleDelete(record.id!)} className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
+                      </div>
+                    </td>
+                    <td className="px-5 py-2.5 text-sm font-semibold text-slate-800">{record.item_type}</td>
+                    <td className="px-5 py-2.5 text-sm text-slate-600 whitespace-pre-wrap">{record.terms_and_conditions}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {showModal && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/95 backdrop-blur-md">
+          <div className="bg-white w-full max-w-xl rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <h2 className="text-lg font-bold text-slate-800">{editingRecord ? "Update Term" : "New Term"}</h2>
+              <button onClick={() => setShowModal(false)} className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-full transition-colors"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-6">
+              <form id="term-form" onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-500 ml-1">Item Type *</label>
+                  <input name="item_type" value={formData.item_type} onChange={handleInputChange} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:ring-1 focus:ring-blue-500 outline-none" required placeholder="e.g. STRUCTURE, CABLE" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-500 ml-1">Terms & Conditions *</label>
+                  <textarea name="terms_and_conditions" value={formData.terms_and_conditions} onChange={handleInputChange} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:ring-1 focus:ring-blue-500 outline-none h-40 resize-none" required placeholder="Enter terms and conditions here..." />
+                </div>
+              </form>
+            </div>
+            <div className="px-6 py-4 bg-slate-50/50 border-t border-slate-100 flex justify-end gap-3 rounded-b-2xl">
+              <button type="button" onClick={() => setShowModal(false)} className="px-5 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors">Cancel</button>
+              <button type="submit" form="term-form" disabled={isSubmitting} className="px-6 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg shadow-md hover:bg-blue-700 transition-colors flex items-center active:scale-95 disabled:opacity-50">
+                {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
+                {editingRecord ? "Update Term" : "Save Term"}
               </button>
             </div>
           </div>
