@@ -70,12 +70,14 @@ const POGenerator = () => {
   const [selectedIndent, setSelectedIndent] = useState("");
   const [selectedSupplier, setSelectedSupplier] = useState("");
   const [selectedFirm, setSelectedFirm] = useState("RBP INDIA PRIVATE LIMITED");
+  const [selectedItemType, setSelectedItemType] = useState("");
+  const [selectedTermRecordId, setSelectedTermRecordId] = useState<number | null>(null);
   const [indentOptions, setIndentOptions] = useState<string[]>([]);
   const [loadingIndents, setLoadingIndents] = useState(false);
   const [loadingVendor, setLoadingVendor] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [termsCache, setTermsCache] = useState<Record<string, string[]>>({});
+  const [termsCache, setTermsCache] = useState<Record<string, { id: number; text: string }[]>>({});
   const [loadingTerms, setLoadingTerms] = useState(false);
   const [termsSource, setTermsSource] = useState("");
   const [planningToFirm, setPlanningToFirm] = useState<Record<string, string>>(
@@ -98,14 +100,7 @@ const POGenerator = () => {
     Record<string, { address: string; gstin: string; email: string }>
   >({});
   const [editingTerm, setEditingTerm] = useState<number | null>(null);
-  const [terms, setTerms] = useState([
-    "Payment within 30 days of delivery",
-    "Goods to be delivered at the destination address mentioned",
-    "GST extra as applicable",
-    "Warranty period as per standard terms",
-    "Any disputes subject to local jurisdiction",
-    "Delivery schedule to be strictly adhered to",
-  ]);
+  const [terms, setTerms] = useState<{ id?: number; text: string }[]>([]);
   const [billingAddress, setBillingAddress] = useState(
     "M/S RBP INDIA PRIVATE LIMITED\nVill - Belapada, PO.Uchhakapat, VIA-Bamra,\nDist. Sambalpur (Odisha)"
   );
@@ -279,19 +274,12 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
     loadIndents();
   }, []);
 
-  // Fetch terms when products change - only for first product's item type
+  // Fetch terms when the selected item type changes.
   useEffect(() => {
-    if (selectedIndent && products.length > 0) {
-      // Get the first product's item type
-      const firstItemType = products[0].itemType;
-      // console.log("First product item type:", firstItemType);
-
-      if (firstItemType) {
-        // console.log("Fetching terms for item type:", firstItemType);
-        fetchTermsForItemType(firstItemType);
-      }
+    if (selectedIndent && selectedItemType) {
+      fetchTermsForProject(selectedItemType);
     }
-  }, [products, selectedIndent]);
+  }, [selectedIndent, selectedItemType]);
 
  const ensureVendorDirectory = async () => {
   if (Object.keys(vendorDirectory).length > 0) return vendorDirectory;
@@ -331,6 +319,10 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
     if (!indentNo) {
       setSelectedSupplier("");
       setSelectedFirm("RBP INDIA PRIVATE LIMITED");
+      setSelectedItemType("");
+      setSelectedTermRecordId(null);
+      setTerms([]);
+      setTermsSource("");
       setPoData((prev) => ({
         ...prev,
         vendorId: "",
@@ -369,6 +361,8 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
 
       let mRow: any = null;
       if (mData && mData.length > 0) mRow = mData[0];
+      setSelectedItemType(mRow?.item_type || "");
+      setSelectedTermRecordId(null);
 
       const { data, error } = await supabase
         .from("planning_item_master")
@@ -509,7 +503,7 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
           // Ensure proper state mapping
           description: product.description || "",
         })),
-        terms: terms,
+        terms: terms.map(t => typeof t === 'string' ? t : t.text),
         paymentTerms: paymentTerms,
         footerNotes: footerNotes, // ADD
         warrantyText: warrantyText,
@@ -660,10 +654,12 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
 
     try {
       const { data, error } = await supabase
-        .from("project_master")
-        .select("terms_and_conditions")
+        .from("term_and_condition")
+        .select("id, terms_and_conditions")
         .eq("item_type", itemType)
-        .not("terms_and_conditions", "is", null);
+        .order("id", { ascending: true })
+        .limit(1)
+        .maybeSingle();
 
       if (error) throw error;
 
@@ -673,25 +669,27 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
       console.log(`📊 Total Records Found: ${data?.length || 0}`);
 
       if (data && data.length > 0) {
-        let allTerms: string[] = [];
+        let allTerms: { id: number; text: string }[] = [];
 
         data.forEach((record, index) => {
           console.log(`📌 Record ${index + 1}:`, record);
 
           if (record.terms_and_conditions) {
-
             console.log(
               `📝 Raw Terms (Record ${index + 1}):`,
               record.terms_and_conditions
             );
 
-            const term = record.terms_and_conditions.trim();
+            const termText = record.terms_and_conditions.trim();
 
-            if (term.length > 0) {
-              allTerms.push(term);
+            if (termText.length > 0) {
+              allTerms.push({
+                id: record.id,
+                text: termText
+              });
             }
 
-            console.log(`✅ Final Term Added (Record ${index + 1}):`, term);
+            console.log(`✅ Final Term Added (Record ${index + 1}):`, termText);
           }
         });
 
@@ -700,7 +698,7 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
         if (allTerms.length > 0) {
           setTermsCache((prev) => ({ ...prev, [itemType]: allTerms }));
           setTerms(allTerms);
-          setTermsSource(`Fetched ${allTerms.length} terms from po_masters for ${itemType}`);
+          setTermsSource(`Fetched ${allTerms.length} terms from project_master for ${itemType}`);
           console.log(`🚀 Set ${allTerms.length} terms for ${itemType}`);
         } else {
           console.log("⚠️ No valid terms after processing");
@@ -708,10 +706,70 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
         }
       } else {
         console.log(`❌ No terms found in DB for item_type: ${itemType}`);
-        setTermsSource(`No terms found for ${itemType} in po_masters, using defaults`);
+        setTermsSource(`No terms found for ${itemType} in project_master, using defaults`);
       }
     } catch (error) {
       console.error("🔥 Error fetching terms:", error);
+      setError("Failed to load terms and conditions");
+      setTermsSource(`Failed to load terms for ${itemType}`);
+    } finally {
+      setLoadingTerms(false);
+    }
+  };
+
+  const parseTermsText = (rawTerms: string | null | undefined) => {
+    return (rawTerms || "")
+      .split(/\r?\n+/)
+      .map((term) => term.trim())
+      .filter(Boolean)
+      .map((text) => ({ text }));
+  };
+
+  const buildTermsText = (termRows: { text: string }[]) => {
+    return termRows
+      .map((term) => term.text.trim())
+      .filter(Boolean)
+      .join("\n");
+  };
+
+  const fetchTermsForProject = async (itemType: string) => {
+    if (!itemType) return;
+
+    if (termsCache[itemType]) {
+      setTerms(termsCache[itemType]);
+      setTermsSource(`Loaded from database cache for ${itemType}`);
+      return;
+    }
+
+    setLoadingTerms(true);
+
+    try {
+      const { data, error } = await supabase
+        .from("term_and_condition")
+        .select("id, terms_and_conditions")
+        .ilike("item_type", itemType)
+        .order("id", { ascending: true });
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        const parsedTerms = data.map((row) => ({
+          id: row.id,
+          text: row.terms_and_conditions || "",
+        }));
+
+        setTerms(parsedTerms);
+        setTermsCache((prev) => ({
+          ...prev,
+          [itemType]: parsedTerms,
+        }));
+        setTermsSource(`Fetched ${data.length} terms from term_and_condition for ${itemType}`);
+      } else {
+        setTerms([]);
+        setTermsSource(`No terms found in term_and_condition for ${itemType}`);
+      }
+    } catch (error) {
+      console.error("Error fetching terms:", error);
       setError("Failed to load terms and conditions");
       setTermsSource(`Failed to load terms for ${itemType}`);
     } finally {
@@ -726,6 +784,10 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
     setSelectedIndent("");
     setSelectedSupplier("");
     setSelectedFirm("RBP INDIA PRIVATE LIMITED");
+    setSelectedItemType("");
+    setSelectedTermRecordId(null);
+    setTerms([]);
+    setTermsSource("");
     setPoData({
       poDate: new Date().toISOString().split("T")[0],
       poNumber: "",
@@ -748,12 +810,62 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
     setEditingTerm(index);
   };
 
-  const handleSaveTerm = (index: number, newText: string) => {
-    if (newText.trim()) {
-      setTerms((prev) =>
-        prev.map((term, i) => (i === index ? newText.trim() : term))
-      );
+  const handleSaveTerm = async (index: number, newText: string) => {
+    if (!newText.trim()) {
+      setEditingTerm(null);
+      return;
     }
+
+    if (!selectedItemType) {
+      alert("Please select an indent with an item type first.");
+      setEditingTerm(null);
+      return;
+    }
+
+    try {
+      const termToSave = terms[index];
+      
+      if (termToSave.id) {
+        // Update existing row
+        const { error } = await supabase
+          .from("term_and_condition")
+          .update({ terms_and_conditions: newText.trim() })
+          .eq("id", termToSave.id);
+        if (error) throw error;
+      } else {
+        // Insert new row
+        const { data, error } = await supabase
+          .from("term_and_condition")
+          .insert([{ 
+            item_type: selectedItemType, 
+            terms_and_conditions: newText.trim() 
+          }])
+          .select();
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+          // Update local state with the new ID
+          setTerms(prev => prev.map((t, i) => i === index ? { ...t, id: data[0].id, text: newText.trim() } : t));
+        }
+      }
+
+      const updatedTerms = terms.map((term, i) =>
+        i === index ? { ...term, text: newText.trim() } : term
+      );
+
+      setTerms(updatedTerms);
+      setTermsCache((prev) => ({
+        ...prev,
+        [selectedItemType]: updatedTerms as { id: number; text: string }[],
+      }));
+      setTermsSource(`Saved term to term_and_condition for ${selectedItemType}`);
+
+    } catch (err: any) {
+      console.error("Error saving term:", err);
+      alert("Failed to save term: " + err.message);
+      alert("Failed to save term: " + err.message);
+    }
+
     setEditingTerm(null);
   };
 
@@ -761,15 +873,36 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
     setEditingTerm(null);
   };
 
-  const handleDeleteTerm = (index: number) => {
+  const handleDeleteTerm = async (index: number) => {
     if (window.confirm("Are you sure you want to delete this term?")) {
-      setTerms((prev) => prev.filter((_, i) => i !== index));
+      try {
+        const termToDelete = terms[index];
+
+        if (termToDelete.id) {
+          const { error } = await supabase
+            .from("term_and_condition")
+            .delete()
+            .eq("id", termToDelete.id);
+          if (error) throw error;
+        }
+
+        const nextTerms = terms.filter((_, i) => i !== index);
+        setTerms(nextTerms);
+        setTermsCache((prev) => ({
+          ...prev,
+          [selectedItemType]: nextTerms as { id: number; text: string }[],
+        }));
+        setTermsSource(`Deleted term from term_and_condition for ${selectedItemType}`);
+      } catch (err: any) {
+        console.error("Error deleting term:", err);
+        alert("Failed to delete term: " + err.message);
+      }
     }
   };
 
   const handleAddTerm = () => {
     setTerms((prev) => {
-      const newTerms = [...prev, "New term"];
+      const newTerms = [...prev, { id: selectedTermRecordId ?? undefined, text: "New term" }];
       setEditingTerm(newTerms.length - 1);
       return newTerms;
     });
@@ -1254,7 +1387,8 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
                               );
 
                               if (newType) {
-                                await fetchTermsForItemType(newType);
+                                setSelectedItemType(newType);
+                                await fetchTermsForProject(newType);
                               }
                             }}
                           />
@@ -1562,6 +1696,7 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
                 )}
               </div>
               <button
+                type="button"
                 onClick={handleAddTerm}
                 className="flex gap-2 items-center self-start px-3 py-1 text-sm text-white bg-blue-600 rounded-lg transition-colors hover:bg-blue-700 sm:self-auto"
               >
@@ -1573,6 +1708,10 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
               <div className="flex justify-center items-center py-8">
                 <RefreshCw className="w-8 h-8 text-blue-600 animate-spin" />
                 <span className="ml-2">Loading terms...</span>
+              </div>
+            ) : terms.length === 0 ? (
+              <div className="p-4 text-sm text-gray-500 bg-white rounded-lg border border-gray-200">
+                No terms found for the selected project.
               </div>
             ) : (
               <div className="space-y-3">
@@ -1588,11 +1727,11 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
                       <div className="flex flex-1 gap-2 items-center">
                         <input
                           type="text"
-                          value={term}
+                          value={term.text}
                           onChange={(e) =>
                             setTerms((prev) =>
                               prev.map((t, i) =>
-                                i === index ? e.target.value : t
+                                i === index ? { ...t, text: e.target.value } : t
                               )
                             )
                           }
@@ -1600,12 +1739,14 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
                           autoFocus
                         />
                         <button
-                          onClick={() => handleSaveTerm(index, term)}
+                          type="button"
+                          onClick={() => handleSaveTerm(index, term.text)}
                           className="p-1 text-green-600 hover:text-green-800"
                         >
                           <Save className="w-4 h-4" />
                         </button>
                         <button
+                          type="button"
                           onClick={handleCancelEdit}
                           className="p-1 text-gray-600 hover:text-gray-800"
                         >
@@ -1615,16 +1756,18 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
                     ) : (
                       <>
                         <span className="flex-1 text-sm text-gray-700">
-                          {term}
+                          {term.text}
                         </span>
                         <div className="flex gap-1 items-center">
                           <button
+                            type="button"
                             onClick={() => handleEditTerm(index)}
                             className="p-1 text-blue-600 hover:text-blue-800"
                           >
                             <Edit3 className="w-4 h-4" />
                           </button>
                           <button
+                            type="button"
                             onClick={() => handleDeleteTerm(index)}
                             className="p-1 text-red-600 hover:text-red-800"
                           >
