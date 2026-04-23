@@ -120,31 +120,49 @@ const PaymentList: React.FC = () => {
         }
       }
 
-      // 4. Fetch payment status from payment_master
-      const { data: paymentStatusData, error: paymentStatusError } = await supabase
-        .from("payment_master")
-        .select("planning_no, payment_status")
-        .in("planning_no", planningNos)
-        .eq("payment_status", "payment done");
+      // 3.5 Fetch PO Copy from purchase_order_master
+      const poIds = masterData.map((r: any) => r.po_id).filter(Boolean);
+      let poCopyMap: Record<string, string> = {};
+      if (poIds.length > 0) {
+        const { data: poData, error: poError } = await supabase
+          .from("purchase_order_master")
+          .select("po_id, po_copy")
+          .in("po_id", poIds);
+        
+        if (!poError && poData) {
+          poData.forEach((p: any) => {
+            poCopyMap[p.po_id] = p.po_copy || "";
+          });
+        }
+      }
 
-      const paidPlanningNos = new Set(
-        (paymentStatusData || []).map((p: any) => p.planning_no)
-      );
+      // 4. Fetch all payments from payment_master to calculate totals
+      const { data: paymentData, error: paymentError } = await supabase
+        .from("payment_master")
+        .select("planning_no, amount, deduction")
+        .in("planning_no", planningNos);
+
+      let paidMap: Record<string, { paid: number; deduction: number }> = {};
+      if (!paymentError && paymentData) {
+        paymentData.forEach((p: any) => {
+          if (!paidMap[p.planning_no]) paidMap[p.planning_no] = { paid: 0, deduction: 0 };
+          paidMap[p.planning_no].paid += (Number(p.amount) || 0);
+          paidMap[p.planning_no].deduction += (Number(p.deduction) || 0);
+        });
+      }
 
       // 5. Transform all data
       const transformedData: PaymentItem[] = [];
       masterData.forEach((row: any) => {
         const items = itemMap[row.planning_no] || [];
         const planningInfo = planningMap[row.planning_no] || { firm: "", project: "", vendorId: "" };
-        const isPaid = paidPlanningNos.has(row.planning_no);
-        const poStatusInfo = { 
-          status: isPaid ? "payment done" : "Pending", 
-          done: 0, 
-          pending: row.total_invoice_amount || 0 
-        };
+        
+        const paidInfo = paidMap[row.planning_no] || { paid: 0, deduction: 0 };
+        const totalInvoice = Number(row.total_invoice_amount) || 0;
+        const totalPaidSoFar = paidInfo.paid + paidInfo.deduction;
+        const pendingAmount = Math.max(0, totalInvoice - totalPaidSoFar);
+        const isFullyPaid = pendingAmount <= 0;
 
-        // Flat mapping to one row per item or per invoice? 
-        // Based on previous design, it seems they want one row per invoice in Payment list.
         transformedData.push({
           "Planning No": row.planning_no || "",
           "PO No": row.po_id || "",
@@ -154,21 +172,21 @@ const PaymentList: React.FC = () => {
           "Vendor ID": planningInfo.vendorId || "-",
           "Item Name": items.map(i => i.item_name).join(", ") || "-",
           Qty: items.reduce((sum, i) => sum + i.qty, 0),
-          "PO Copy": row.invoice_copy || "",
+          "PO Copy": poCopyMap[row.po_id] || "",
           "Project Name": planningInfo.project || "-",
           "Firm Name": planningInfo.firm || "-",
           "Bill Type": "Invoice",
           "Bill No": row.invoice_no || "",
           "Bill Date": row.invoice_date || "",
-          "Bill Amount": row.total_invoice_amount || 0,
-          "Deduction Amount": row.deduction || 0,
+          "Bill Amount": totalInvoice,
+          "Deduction Amount": paidInfo.deduction, // Showing cumulative payment deductions
           "Bill Image": row.invoice_copy || "",
           "Transporter Name": row.transport_name || "",
           "LR No.": row.lr_no || "",
-          "Payment Status": poStatusInfo.status,
-          "Payment Done": poStatusInfo.done,
-          "Pending Amount": poStatusInfo.pending,
-          status: poStatusInfo.status,
+          "Payment Status": isFullyPaid ? "payment done" : "Pending",
+          "Payment Done": paidInfo.paid,
+          "Pending Amount": pendingAmount,
+          status: isFullyPaid ? "payment done" : "Pending",
           Remarks: "",
           "Quotation No": "",
           Planned2: "",

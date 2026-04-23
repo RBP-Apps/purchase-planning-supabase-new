@@ -132,26 +132,72 @@ const POList = () => {
     try {
       setHistoryLoading(true);
 
-      const { data, error } = await supabase
+      // 1. Fetch from receipt_item_master
+      const { data: items, error: itemsError } = await supabase
         .from("receipt_item_master")
         .select("*")
-        .not("bill_type", "is", null);
+        .order("created_at", { ascending: false });
 
-      if (error) throw error;
+      if (itemsError) throw itemsError;
 
-      const transformedData = data.map((row) => ({
-        "Planning No": row.planning_no,
-        "Bill No": row.ref_no,
-        "Bill Date": row.actual_payment,
-        "Bill Amount": row.amount,
-        "PO No": row.po_no,
-        "Firm Name": row.firm_name,
-        "Vendor Name": row.vendor_name,
-      }));
+      if (!items || items.length === 0) {
+        setHistoryData([]);
+        return;
+      }
 
-      setHistoryData(transformedData);
+      // 2. Fetch from receipt_master to join
+      const receiptIds = [...new Set(items.map(i => i.receipt_id).filter(Boolean))];
+      let masterMap: Record<string, any> = {};
+      if (receiptIds.length > 0) {
+        const { data: masters, error: mastersError } = await supabase
+          .from("receipt_master")
+          .select("*")
+          .in("receipt_id", receiptIds);
+        
+        if (!mastersError && masters) {
+          masters.forEach(m => {
+            masterMap[m.receipt_id] = m;
+          });
+        }
+      }
+
+      // 3. Fetch from planning_master to get Firm Name
+      const planningNos = [...new Set(items.map(i => i.planning_no).filter(Boolean))];
+      let planningMap: Record<string, any> = {};
+      if (planningNos.length > 0) {
+        const { data: plannings, error: planningsError } = await supabase
+          .from("planning_master")
+          .select("planning_no, firm")
+          .in("planning_no", planningNos);
+        
+        if (!planningsError && plannings) {
+          plannings.forEach(p => {
+            planningMap[p.planning_no] = p;
+          });
+        }
+      }
+
+      // 4. Map data
+      const transformedData = items.map((row) => {
+        const master = masterMap[row.receipt_id] || {};
+        const planning = planningMap[row.planning_no] || {};
+        return {
+          "Planning No": row.planning_no,
+          "PO No": master.po_id || "-",
+          "Firm Name": planning.firm || "-",
+          "Vendor Name": master.vendor_name || "-",
+          "Bill No": master.invoice_no || "-",
+          "Bill Date": master.invoice_date || "-",
+          "Received Qty": row.qty_received,
+          "Remaining Qty": row.remaining_qty,
+          "Bill Amount": row.net_amount || master.total_invoice_amount,
+          "Bill Image": master.invoice_copy || "",
+        };
+      });
+
+      setHistoryData(transformedData as any);
     } catch (err) {
-      console.error(err);
+      console.error("Error fetching history data:", err);
     } finally {
       setHistoryLoading(false);
     }
@@ -417,7 +463,7 @@ const POList = () => {
     setBillNo(firstItem["Bill No"] || "");
     setBillDate(firstItem["Bill Date"] || "");
     setBillImage(firstItem["Bill Image"] || "");
-    setBillAmount(firstItem["Bill Amount"]?.toString() || "");
+    setBillAmount(firstItem["Grand Total Amount"]?.toString() || "");
     setDiscountAmount(firstItem["Discount Amount"]?.toString() || "");
     setTransporterName(firstItem["Transporter Name"] || "");
     setLrNo(firstItem["LR No."] || "");
@@ -683,6 +729,32 @@ const POList = () => {
     };
   }, [showModal]);
 
+
+
+  const calculateTotalAmount = (item: POItem) => {
+    const receivedQty = Number(item["Received Qty"]) || 0;
+    const rate = Number(item.Rate) || 0;
+    const discountPercent = Number(item["Discount"]) || 0;
+    const gst = Number(item["GST %"]) || 0;
+    const transportCharge = Number(item.TransportCharge) || 0;
+
+    const baseAmount = receivedQty * rate;
+    const discountAmount = baseAmount * (discountPercent / 100);
+    const taxableAmount = baseAmount - discountAmount;
+    const gstAmount = taxableAmount * (gst / 100);
+    const total = taxableAmount + gstAmount + transportCharge;
+    return total.toFixed(2);
+  };
+
+  // Calculate total of all items' total amounts
+  const calculateGrandTotal = () => {
+    return groupItems.reduce((total, item) => {
+      return total + parseFloat(calculateTotalAmount(item));
+    }, 0);
+  };
+
+
+
   // Group data by Planning No
   const groupedData = data.reduce((acc, item) => {
     const planningNo = item["Planning No"];
@@ -770,26 +842,7 @@ const POList = () => {
     return `${day}/${month}/${year}`;
   };
 
-  const calculateTotalAmount = (item: POItem) => {
-    const receivedQty = Number(item["Received Qty"]) || 0;
-    const rate = Number(item.Rate) || 0;
-    const discountPercent = Number(item["Discount"]) || 0;
-    const gst = Number(item["GST %"]) || 0;
-    const transportCharge = Number(item.TransportCharge) || 0;
 
-    const baseAmount = receivedQty * rate;
-    const discountAmount = baseAmount * (discountPercent / 100);
-    const gstAmount = baseAmount * (gst / 100);
-    const total = (baseAmount - discountAmount) + gstAmount + transportCharge;
-    return total.toFixed(2);
-  };
-
-  // Calculate total of all items' total amounts
-  const calculateGrandTotal = () => {
-    return groupItems.reduce((total, item) => {
-      return total + parseFloat(calculateTotalAmount(item));
-    }, 0);
-  };
 
 
 
@@ -1032,9 +1085,9 @@ const POList = () => {
                   <div className="w-10 h-10 border-t-2 border-blue-500 rounded-full animate-spin" />
                 </div>
               ) : (
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
                   <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
+                    <thead className="bg-gray-50 sticky top-0 z-10">
                       <tr>
                         {[
                           "Planning No",
@@ -1377,9 +1430,9 @@ const POList = () => {
 
                       {/* Items Table */}
                       <div className="overflow-hidden bg-white rounded-lg border border-gray-200 shadow-sm">
-                        <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+                        <div className="overflow-x-auto overflow-y-auto max-h-[50vh] scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
                           <table className="min-w-full divide-y divide-gray-200">
-                            <thead className="bg-gray-50">
+                            <thead className="bg-gray-50 sticky top-0 z-10">
                               <tr>
                                 <th className="px-2 py-2 text-xs font-medium tracking-wider text-left text-gray-500 uppercase whitespace-nowrap sm:px-4 sm:py-3">
                                   Planning No
