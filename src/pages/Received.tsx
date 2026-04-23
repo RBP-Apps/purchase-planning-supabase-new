@@ -177,23 +177,35 @@ const POList = () => {
         }
       }
 
-      // 4. Map data
-      const transformedData = items.map((row) => {
-        const master = masterMap[row.receipt_id] || {};
-        const planning = planningMap[row.planning_no] || {};
-        return {
-          "Planning No": row.planning_no,
-          "PO No": master.po_id || "-",
-          "Firm Name": planning.firm || "-",
-          "Vendor Name": master.vendor_name || "-",
-          "Bill No": master.invoice_no || "-",
-          "Bill Date": master.invoice_date || "-",
-          "Received Qty": row.qty_received,
-          "Remaining Qty": row.remaining_qty,
-          "Bill Amount": row.net_amount || master.total_invoice_amount,
-          "Bill Image": master.invoice_copy || "",
-        };
+      // 4. Map and Group data by receipt_id (Invoice)
+      const groupedMap: Record<string, any> = {};
+      
+      items.forEach((row) => {
+        const rid = row.receipt_id;
+        if (!groupedMap[rid]) {
+          const master = masterMap[rid] || {};
+          const planning = planningMap[row.planning_no] || {};
+          groupedMap[rid] = {
+            "Planning No": row.planning_no,
+            "PO No": master.po_id || "-",
+            "Firm Name": planning.firm || "-",
+            "Vendor Name": master.vendor_name || "-",
+            "Bill No": master.invoice_no || "-",
+            "Bill Date": master.invoice_date || "-",
+            "Received Qty": 0,
+            "Remaining Qty": 0,
+            "Bill Amount": master.total_invoice_amount || 0,
+            "Bill Image": master.invoice_copy || "",
+          };
+        }
+        groupedMap[rid]["Received Qty"] += Number(row.qty_received) || 0;
+        groupedMap[rid]["Remaining Qty"] += Number(row.remaining_qty) || 0;
+        
+        // If row has net_amount, we could sum it if Bill Amount should be sum of items
+        // but typically master.total_invoice_amount is the definitive bill amount.
       });
+
+      const transformedData = Object.values(groupedMap);
 
       setHistoryData(transformedData as any);
     } catch (err) {
@@ -344,8 +356,9 @@ const POList = () => {
           const discountPercent = Number(item["Discount"]) || 0;
           const baseAmount = receivedQty * rate;
           const discountAmount = baseAmount * (discountPercent / 100);
-          const gstAmount = baseAmount * (gstPercent / 100);
-          const netAmount = (baseAmount - discountAmount) + gstAmount;
+          const taxableAmount = baseAmount - discountAmount;
+          const gstAmount = taxableAmount * (gstPercent / 100);
+          const netAmount = taxableAmount + gstAmount;
           const remainingQty = Math.max(0, poQty - receivedQty);
           return {
             receipt_id: receiptId,
@@ -1633,17 +1646,56 @@ const POList = () => {
                       </div>
                     </div>
 
-                    {/* Grand Total Display - ADD THIS SECTION */}
-                    <div className="flex justify-end mt-4 p-3 bg-gray-50 border-t border-gray-200">
-                      <div className="flex items-center gap-4">
-                        <span className="text-sm font-medium text-gray-700">
-                          Grand Total:
-                        </span>
-                        <span className="text-lg font-bold text-blue-600">
-                          ₹{calculateGrandTotal().toFixed(2)}
-                        </span>
-                      </div>
-                    </div>
+                    {/* Detailed Summary Section */}
+                    {(() => {
+                      const summary = groupItems.reduce((acc, item) => {
+                        const receivedQty = Number(item["Received Qty"]) || 0;
+                        const rate = Number(item.Rate) || 0;
+                        const discountPercent = Number(item["Discount"]) || 0;
+                        const gstPercent = Number(item["GST %"]) || 0;
+                        const transportCharge = Number(item.TransportCharge) || 0;
+
+                        const base = receivedQty * rate;
+                        const disc = base * (discountPercent / 100);
+                        const taxable = base - disc;
+                        const gst = taxable * (gstPercent / 100);
+
+                        acc.base += base;
+                        acc.discount += disc;
+                        acc.gst += gst;
+                        acc.transport += transportCharge;
+                        return acc;
+                      }, { base: 0, discount: 0, gst: 0, transport: 0 });
+
+                      const grandTotal = summary.base - summary.discount + summary.gst + summary.transport;
+
+                      return (
+                        <div className="flex flex-col items-end mt-4 p-4 bg-gray-50 border-t border-gray-200 space-y-2">
+                          <div className="flex justify-between w-64">
+                            <span className="text-sm text-gray-600">Total:</span>
+                            <span className="text-sm font-semibold text-gray-900">₹{summary.base.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between w-64">
+                            <span className="text-sm text-gray-600">Discount:</span>
+                            <span className="text-sm font-semibold text-red-600">- ₹{summary.discount.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between w-64">
+                            <span className="text-sm text-gray-600">GST:</span>
+                            <span className="text-sm font-semibold text-green-600">+ ₹{summary.gst.toFixed(2)}</span>
+                          </div>
+                          {summary.transport > 0 && (
+                            <div className="flex justify-between w-64">
+                              <span className="text-sm text-gray-600">Transport:</span>
+                              <span className="text-sm font-semibold text-gray-900">₹{summary.transport.toFixed(2)}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between w-64 pt-2 border-t border-gray-300">
+                            <span className="text-base font-bold text-gray-900">Grand Total:</span>
+                            <span className="text-xl font-bold text-blue-600">₹{grandTotal.toFixed(2)}</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
 

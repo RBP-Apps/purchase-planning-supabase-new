@@ -8,6 +8,7 @@ export default defineConfig({
     exclude: ["lucide-react"],
   },
   server: {
+    port: 5174,
     proxy: {
       // Proxy GAS to avoid browser CORS in dev
       "/gas": {

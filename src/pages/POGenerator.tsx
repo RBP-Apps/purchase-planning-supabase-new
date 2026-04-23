@@ -157,6 +157,7 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
     discount: number; // not in sheet, default 0 or user input
     amount: number; // computed client-side
     quotationNo?: string; // user input
+    itemCode?: string; // from planning_item_master
   };
 
   const [products, setProducts] = useState<ProductItem[]>([]);
@@ -366,7 +367,7 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
 
       const { data, error } = await supabase
         .from("planning_item_master")
-        .select("id, planning_no, item, qty, description, uom")
+        .select("id, planning_no, item, item_code, qty, description, uom")
         .eq("planning_no", indentNo);
 
       if (error) throw error;
@@ -394,6 +395,7 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
           gst: 0,
           discount: 0,
           amount: 0,
+          itemCode: r.item_code || "",
         };
       }).sort((a, b) => a.sn - b.sn);
 
@@ -411,27 +413,50 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
   };
 
   const calculateTotals = () => {
-    const subtotal = products.reduce((sum, product) => {
-      const baseAmount = product.rate * product.qty;
-      const discountAmount = (baseAmount * product.discount) / 100;
-      return sum + (baseAmount - discountAmount);
-    }, 0);
+    let totalBase = 0;
+    let totalDiscount = 0;
+    let totalGST = 0;
 
-    const gstAmount = products.reduce((sum, product) => {
+    products.forEach((product) => {
       const baseAmount = product.rate * product.qty;
       const discountAmount = (baseAmount * product.discount) / 100;
       const amountAfterDiscount = baseAmount - discountAmount;
-      return sum + (amountAfterDiscount * product.gst) / 100;
-    }, 0);
+      const gstAmount = (amountAfterDiscount * product.gst) / 100;
 
-    const grandTotal = subtotal + gstAmount;
+      totalBase += baseAmount;
+      totalDiscount += discountAmount;
+      totalGST += gstAmount;
+    });
 
-    return { subtotal, gstAmount, grandTotal };
+    const grandTotal = totalBase - totalDiscount + totalGST;
+
+    return { totalBase, totalDiscount, totalGST, grandTotal };
   };
 
   const savePOHistory = async (pdfLink: string) => {
+    // Generate next PO ID: RBPPO1, RBPPO2, ...
+    let nextPoId = "RBPPO1";
+    try {
+      const { data: lastPos, error: fetchError } = await supabase
+        .from("purchase_order_master")
+        .select("po_id")
+        .like("po_id", "RBPPO%")
+        .order("id", { ascending: false })
+        .limit(1);
+
+      if (!fetchError && lastPos && lastPos.length > 0) {
+        const lastId = lastPos[0].po_id;
+        const match = lastId.match(/RBPPO(\d+)/);
+        if (match) {
+          const lastNum = parseInt(match[1]);
+          nextPoId = `RBPPO${lastNum + 1}`;
+        }
+      }
+    } catch (err) {
+      console.error("Error generating next PO ID:", err);
+    }
+
     const planningNo = selectedIndent || "AUTO-" + Date.now();
-    const poNo = poData.poNumber || "AUTO-" + Date.now();
     const poDate = poData.poDate || new Date().toISOString().split('T')[0];
     const vendorName = selectedSupplier;
 
@@ -447,19 +472,20 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
       netPoAmount += finalAmount;
 
       return {
-        po_id: poNo,
+        po_id: nextPoId,
         planning_no: planningNo,
         item: item.product,
         qty: item.qty,
         rate: item.rate,
         gst_percent: item.gst,
         discount_percent: item.discount,
-        net_amount: Math.round(finalAmount)
+        net_amount: Math.round(finalAmount),
+        item_code: item.itemCode || ""
       };
     });
 
     const poMasterRow = {
-      po_id: poNo,
+      po_id: nextPoId,
       po_date: poDate,
       planning_no: planningNo,
       vendor_name: vendorName,
@@ -467,7 +493,8 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
       prepared_by: poData.preparedBy,
       approved_by: poData.approvedBy,
       po_copy: pdfLink,
-      vendor_id: poData.vendorId
+      vendor_id: poData.vendorId,
+      po_manual: poData.poNumber
     };
 
     try {
@@ -1394,25 +1421,25 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
                           />
                         </td>
                         <td className="px-4 py-3 text-sm font-medium">
+                          {product.product}
+                        </td>
+                        <td className="px-4 py-3 text-sm">
                           <textarea
-                            value={product.product}
+                            value={product.description}
                             className="px-2 py-1 w-full min-h-[80px] rounded border border-gray-300 focus:ring-1 focus:ring-blue-500 resize-y overflow-y-auto whitespace-pre-wrap"
                             onChange={(e) => {
-                              const newProduct = e.target.value;
+                              const newDesc = e.target.value;
                               setProducts((prev) =>
                                 prev.map((p) =>
                                   p.sn === product.sn
-                                    ? { ...p, product: newProduct }
+                                    ? { ...p, description: newDesc }
                                     : p
                                 )
                               );
                             }}
-                            placeholder="Enter product name"
+                            placeholder="Enter description"
                             rows={3}
                           />
-                        </td>
-                        <td className="px-4 py-3 text-sm">
-                          {product.description}
                         </td>
                         <td className="px-4 py-3 text-sm">{product.qty}</td>
                         <td className="hidden px-4 py-3 text-sm md:table-cell">
@@ -1491,18 +1518,29 @@ Shipping location-To be delivered at in the state of Punjab, Haryana, Maharastra
                         Total:
                       </td>
                       <td className="px-4 py-3 font-bold">
-                        ₹{calculateTotals().subtotal.toLocaleString()}
+                        ₹{calculateTotals().totalBase.toLocaleString()}
                       </td>
                     </tr>
                     <tr>
                       <td
                         colSpan={10}
-                        className="px-4 py-3 font-medium text-right"
+                        className="px-4 py-3 font-medium text-right text-red-600"
                       >
-                        GST Amount:
+                        Discount:
                       </td>
-                      <td className="px-4 py-3 font-bold">
-                        ₹{calculateTotals().gstAmount.toLocaleString()}
+                      <td className="px-4 py-3 font-bold text-red-600">
+                        - ₹{calculateTotals().totalDiscount.toLocaleString()}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td
+                        colSpan={10}
+                        className="px-4 py-3 font-medium text-right text-green-600"
+                      >
+                        GST:
+                      </td>
+                      <td className="px-4 py-3 font-bold text-green-600">
+                        + ₹{calculateTotals().totalGST.toLocaleString()}
                       </td>
                     </tr>
 

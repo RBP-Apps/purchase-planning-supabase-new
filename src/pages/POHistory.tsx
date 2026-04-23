@@ -567,11 +567,12 @@ const uploadFile = async (file: File): Promise<string> => {
                   Remarks
                 </th> */}
 
+                <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
+                  PO Copy
+                </th>
+
                 {activeTab === "pending" && (
                   <>
-                    <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
-                      PO Copy
-                    </th>
                     <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
                       Upload File
                     </th>
@@ -719,21 +720,22 @@ const uploadFile = async (file: File): Promise<string> => {
                     {item.remarks}
                   </td> */}
 
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {item.poCopy ? (
+                      <button
+                        onClick={() => window.open(item.poCopy, "_blank")}
+                        className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg border border-blue-200 hover:bg-blue-100"
+                      >
+                        <Eye className="mr-1.5 w-4 h-4" />
+                        View
+                      </button>
+                    ) : (
+                      <span className="text-sm text-gray-400">No file</span>
+                    )}
+                  </td>
+
                   {activeTab === "pending" && (
                     <>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {item.poCopy ? (
-                          <button
-                            onClick={() => window.open(item.poCopy, "_blank")}
-                            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg border border-blue-200 hover:bg-blue-100"
-                          >
-                            <Eye className="mr-1.5 w-4 h-4" />
-                            View
-                          </button>
-                        ) : (
-                          <span className="text-sm text-gray-400">No file</span>
-                        )}
-                      </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <input
                           type="file"

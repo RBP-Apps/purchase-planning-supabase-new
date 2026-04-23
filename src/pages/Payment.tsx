@@ -382,8 +382,20 @@ const PaymentList: React.FC = () => {
     })
     .filter((item) => item["Payment Status"] !== "payment done")
     .reduce((unique: PaymentItem[], item) => {
-      if (!unique.find((u) => u["Planning No"] === item["Planning No"])) {
-        unique.push(item);
+      const existing = unique.find((u) => u["Planning No"] === item["Planning No"]);
+      if (!existing) {
+        unique.push({ ...item });
+      } else {
+        // Accumulate all Bill Nos (comma-separated, no duplicates)
+        const existingBillNos = existing["Bill No"]
+          ? existing["Bill No"].split(", ").filter(Boolean)
+          : [];
+        const newBillNo = item["Bill No"];
+        if (newBillNo && !existingBillNos.includes(newBillNo)) {
+          existing["Bill No"] = [...existingBillNos, newBillNo].join(", ");
+        }
+        // Sum Bill Amounts across all receipts for this planning no
+        existing["Bill Amount"] = (existing["Bill Amount"] || 0) + (item["Bill Amount"] || 0);
       }
       return unique;
     }, []);

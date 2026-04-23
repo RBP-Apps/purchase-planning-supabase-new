@@ -16,28 +16,24 @@ const PDFTemplate = ({ data, firmData }) => {
   }
 
   const calculateTotals = () => {
-    const subtotal = data.products.reduce((sum, product) => {
-      const baseAmount = product.rate * product.qty;
-      const discountAmount = (baseAmount * product.discount) / 100;
-      return sum + (baseAmount - discountAmount);
-    }, 0);
+    let totalBase = 0;
+    let totalDiscount = 0;
+    let totalGST = 0;
 
-    const gstAmount = data.products.reduce((sum, product) => {
+    data.products.forEach((product) => {
       const baseAmount = product.rate * product.qty;
       const discountAmount = (baseAmount * product.discount) / 100;
       const amountAfterDiscount = baseAmount - discountAmount;
-      return sum + (amountAfterDiscount * product.gst) / 100;
-    }, 0);
+      const gstAmount = (amountAfterDiscount * product.gst) / 100;
 
-    const grandTotal = subtotal + gstAmount;
+      totalBase += baseAmount;
+      totalDiscount += discountAmount;
+      totalGST += gstAmount;
+    });
 
-    const totalDiscount = data.products.reduce((sum, product) => {
-      const baseAmount = product.rate * product.qty;
-      const discountAmount = (baseAmount * product.discount) / 100;
-      return sum + discountAmount;
-    }, 0);
+    const grandTotal = totalBase - totalDiscount + totalGST;
 
-    return { subtotal, gstAmount, grandTotal, totalDiscount };
+    return { totalBase, totalDiscount, totalGST, grandTotal };
   };
 
   const numberToWords = (num) => {
@@ -441,22 +437,7 @@ const PDFTemplate = ({ data, firmData }) => {
                 textAlign: "right",
               }}
             >
-              {totals.subtotal.toLocaleString("en-IN", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
-            </span>
-          </div>
-          <div style={{ marginBottom: "3px" }}>
-            <span style={{ marginRight: "50px" }}>GST</span>
-            <span
-              style={{
-                display: "inline-block",
-                width: "120px",
-                textAlign: "right",
-              }}
-            >
-              {totals.gstAmount.toLocaleString("en-IN", {
+              {totals.totalBase.toLocaleString("en-IN", {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               })}
@@ -474,6 +455,22 @@ const PDFTemplate = ({ data, firmData }) => {
             >
               -
               {totals.totalDiscount.toLocaleString("en-IN", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </span>
+          </div>
+
+          <div style={{ marginBottom: "3px" }}>
+            <span style={{ marginRight: "50px" }}>GST</span>
+            <span
+              style={{
+                display: "inline-block",
+                width: "120px",
+                textAlign: "right",
+              }}
+            >
+              {totals.totalGST.toLocaleString("en-IN", {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               })}
