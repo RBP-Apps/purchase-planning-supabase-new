@@ -1,6 +1,7 @@
 import { supabase } from "../lib/supabase";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Search,
   Filter,
@@ -8,6 +9,7 @@ import {
   MessageSquare,
   CheckCircle,
   XCircle,
+  X,
   Clock,
 } from "lucide-react";
 
@@ -23,6 +25,7 @@ const Approval = () => {
     type: "success" | "error";
     message: string;
   } | null>(null);
+  const [selectedGroup, setSelectedGroup] = useState<any>(null);
 
 
   const loadRows = async () => {
@@ -130,11 +133,10 @@ const Approval = () => {
     return Object.values(grouped);
   };
 
-  // const groupedPendingData = groupByPlanningNo(pendingData);
-  // const groupedHistoryData = groupByPlanningNo(historyData);
+  const groupedPendingData = groupByPlanningNo(pendingData);
+  const groupedHistoryData = groupByPlanningNo(historyData);
 
-  // const currentData = activeTab === "pending" ? groupedPendingData : groupedHistoryData;
-  const currentData = activeTab === "pending" ? pendingData : historyData;
+  const currentData = activeTab === "pending" ? groupedPendingData : groupedHistoryData;
 
   const filteredData = currentData.filter((item) => {
     const matchesSearch = Object.values(item).some((value: any) =>
@@ -450,6 +452,11 @@ const Approval = () => {
                     Action
                   </th>
                 )}
+                {activeTab === "history" && (
+                  <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
+                    View
+                  </th>
+                )}
                 <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
                   Status
                 </th>
@@ -472,16 +479,9 @@ const Approval = () => {
                   Qty
                 </th>
 
-
-                {/* <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
-                  Serial Number
-                </th> */}
                 <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
                   Date
                 </th>
-                {/* <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
-                  Requester Name
-                </th> */}
                 <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
                   Project Name
                 </th>
@@ -541,12 +541,24 @@ const Approval = () => {
                           <XCircle className="w-5 h-5" />
                         </button>
                         <button
+                          onClick={() => setSelectedGroup(item)}
                           className="p-1 text-blue-600 rounded transition-colors duration-200 hover:text-blue-900"
                           title="View Details"
                         >
                           <Eye className="w-5 h-5" />
                         </button>
                       </div>
+                    </td>
+                  )}
+                  {activeTab === "history" && (
+                    <td className="px-6 py-4 text-sm whitespace-nowrap">
+                      <button
+                        onClick={() => setSelectedGroup(item)}
+                        className="p-1 text-blue-600 rounded transition-colors duration-200 hover:text-blue-900"
+                        title="View Details"
+                      >
+                        <Eye className="w-5 h-5" />
+                      </button>
                     </td>
                   )}
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -613,10 +625,10 @@ const Approval = () => {
                   </td>
 
                   <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap">
-                    {item.itemName}
+                    {item.allItems?.length > 1 ? `${item.itemName} (+${item.allItems.length - 1} more)` : item.itemName}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap">
-                    {item.qty}
+                    {item.allItems?.reduce((sum: number, i: any) => sum + Number(i.qty), 0)}
                   </td>
 
 
@@ -679,6 +691,99 @@ const Approval = () => {
           </div>
         )}
       </div>
+      {/* Product Details Modal - Using Portal for better stacking */}
+      {selectedGroup && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6 md:p-10 animate-modal-fade backdrop-blur-sm bg-black/40">
+          <div 
+            className="relative w-full max-w-5xl bg-white rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col animate-modal-slide border border-gray-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header with Gradient Accent */}
+            <div className="flex justify-between items-center p-6 border-b border-gray-100 sticky top-0 bg-white/80 backdrop-blur-md z-10">
+              <div>
+                <div className="flex items-center gap-3 mb-1">
+                  <div className="p-2 bg-blue-50 rounded-lg">
+                    <Eye className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-gray-900 tracking-tight">
+                    Planning Details: <span className="text-blue-600">{selectedGroup.planningNo}</span>
+                  </h2>
+                </div>
+                <p className="text-sm font-medium text-gray-500 ml-10">
+                  Project: <span className="text-gray-900">{selectedGroup.projectName}</span> | Firm: <span className="text-gray-900">{selectedGroup.firmName}</span>
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedGroup(null)}
+                className="p-2 text-gray-400 rounded-xl transition-all duration-200 hover:bg-gray-100 hover:text-gray-900 hover:rotate-90 active:scale-95"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="p-8 overflow-y-auto custom-scrollbar">
+              {/* Dynamic Info Grid */}
+              <div className="mb-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {[
+                  { label: "Vendor", value: selectedGroup.vendorName, icon: "🏢" },
+                  { label: "Date", value: formatDateToDDMMYYYY(selectedGroup.date), icon: "📅" },
+                  { label: "Item Type", value: selectedGroup.itemType, icon: "🏷️" },
+                  { label: "Department", value: selectedGroup.department, icon: "📁" },
+                ].map((info, i) => (
+                  <div key={i} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm hover:shadow-md hover:border-blue-100 transition-all duration-300 group">
+                    <div className="flex items-center gap-3 mb-2">
+                      <span className="text-xl group-hover:scale-110 transition-transform duration-300">{info.icon}</span>
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">{info.label}</p>
+                    </div>
+                    <p className="text-sm font-semibold text-gray-900 line-clamp-2">{info.value}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Items Table with better aesthetics */}
+              <div className="rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead>
+                    <tr className="bg-gray-50/50">
+                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest border-b border-gray-100">Sr.</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest border-b border-gray-100">Item Name</th>
+                      <th className="px-6 py-4 text-center text-xs font-bold text-gray-500 uppercase tracking-widest border-b border-gray-100">Qty</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest border-b border-gray-100">Remarks</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-100">
+                    {selectedGroup.allItems.map((item: any, idx: number) => (
+                      <tr key={item.id} className="hover:bg-blue-50/30 transition-colors duration-150 group">
+                        <td className="px-6 py-4 text-sm text-gray-400 font-medium">{idx + 1}</td>
+                        <td className="px-6 py-4 text-sm font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">{item.itemName}</td>
+                        <td className="px-6 py-4 text-sm text-center">
+                          <span className="inline-flex items-center px-3 py-1 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-100">
+                            {item.qty}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600 italic">
+                          {item.remarks || "No remarks"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 border-t border-gray-100 bg-gray-50/50 flex justify-end gap-3 sticky bottom-0 z-10">
+              <button
+                onClick={() => setSelectedGroup(null)}
+                className="px-8 py-2.5 bg-white border border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all active:scale-95 shadow-sm"
+              >
+                Close View
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 };
