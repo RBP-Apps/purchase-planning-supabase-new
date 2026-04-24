@@ -302,7 +302,7 @@ const ProjectMasterSection = () => {
             <AlertCircle className="w-10 h-10 mx-auto mb-2 text-slate-400" /><p className="text-md font-semibold text-slate-600">No Records Found</p>
           </div>
         ) : (
-          <div className="overflow-x-auto max-h-[500px]">
+          <div className="overflow-x-auto max-h-[450px]">
             <table className="w-full text-left text-sm border-collapse">
               <thead className="bg-slate-50 sticky top-0 z-10 border-b border-slate-200">
                 <tr>

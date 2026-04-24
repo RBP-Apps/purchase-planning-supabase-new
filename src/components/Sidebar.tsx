@@ -79,10 +79,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           <div className="flex items-center space-x-3">
             <div className="rounded-lg">
               <img
-            src={"Images/RBPLogo.jpeg"}
+            src={"Images/Logo.PNG"}
             alt="Company Logo"
             style={{
-              height: "50px",
+              height: "40px",
               width: "auto",
               margin: "0 auto",
               display: "block",

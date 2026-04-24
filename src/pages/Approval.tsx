@@ -443,9 +443,9 @@ const Approval = () => {
         </div>
 
         {/* Table */}
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto overflow-y-auto max-h-96">
           <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 sticky top-0">
               <tr>
                 {activeTab === "pending" && (
                   <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
@@ -649,7 +649,7 @@ const Approval = () => {
                     {item.firmName}
                   </td>
 
-                  <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap">
+                  <td className="px-6 py-4 text-sm text-gray-900 ">
                     {item.itemType}
                   </td>
 

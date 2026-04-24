@@ -28,111 +28,111 @@ const POHistory = () => {
   );
 
 
-const loadRows = async () => {
-  setLoading(true);
-  setError(null);
+  const loadRows = async () => {
+    setLoading(true);
+    setError(null);
 
-  try {
-    // 1. Fetch purchase order master records
-    const { data, error } = await supabase
-      .from("purchase_order_master")
-      .select("*")
-      .order("created_at", { ascending: false });
+    try {
+      // 1. Fetch purchase order master records
+      const { data, error } = await supabase
+        .from("purchase_order_master")
+        .select("*")
+        .order("created_at", { ascending: false });
 
-    if (error) throw error;
+      if (error) throw error;
 
-    const masterData = data || [];
+      const masterData = data || [];
 
-    // 2. Fetch item data from po_item_master for all po_ids
-    const poIds = masterData.map((r: any) => r.po_id).filter(Boolean);
-    let itemMap: Record<string, { itemNames: string[]; qtys: number[] }> = {};
+      // 2. Fetch item data from po_item_master for all po_ids
+      const poIds = masterData.map((r: any) => r.po_id).filter(Boolean);
+      let itemMap: Record<string, { itemNames: string[]; qtys: number[] }> = {};
 
-    if (poIds.length > 0) {
-      const { data: itemData, error: itemError } = await supabase
-        .from("po_item_master")
-        .select("po_id, item, qty")
-        .in("po_id", poIds);
+      if (poIds.length > 0) {
+        const { data: itemData, error: itemError } = await supabase
+          .from("po_item_master")
+          .select("po_id, item, qty")
+          .in("po_id", poIds);
 
-      if (!itemError && itemData) {
-        itemData.forEach((item: any) => {
-          if (!itemMap[item.po_id]) {
-            itemMap[item.po_id] = { itemNames: [], qtys: [] };
-          }
-          if (item.item) itemMap[item.po_id].itemNames.push(item.item);
-          if (item.qty != null) itemMap[item.po_id].qtys.push(item.qty);
-        });
+        if (!itemError && itemData) {
+          itemData.forEach((item: any) => {
+            if (!itemMap[item.po_id]) {
+              itemMap[item.po_id] = { itemNames: [], qtys: [] };
+            }
+            if (item.item) itemMap[item.po_id].itemNames.push(item.item);
+            if (item.qty != null) itemMap[item.po_id].qtys.push(item.qty);
+          });
+        }
       }
-    }
 
-    // 3. Fetch firm names from planning_master for all planning_nos
-    const planningNos = masterData.map((r: any) => r.planning_no).filter(Boolean);
-    let firmMap: Record<string, string> = {};
+      // 3. Fetch firm names from planning_master for all planning_nos
+      const planningNos = masterData.map((r: any) => r.planning_no).filter(Boolean);
+      let firmMap: Record<string, string> = {};
 
-    if (planningNos.length > 0) {
-      const { data: planningData, error: planningError } = await supabase
-        .from("planning_master")
-        .select("planning_no, firm")
-        .in("planning_no", planningNos);
+      if (planningNos.length > 0) {
+        const { data: planningData, error: planningError } = await supabase
+          .from("planning_master")
+          .select("planning_no, firm")
+          .in("planning_no", planningNos);
 
-      if (!planningError && planningData) {
-        planningData.forEach((p: any) => {
-          if (p.planning_no && p.firm) {
-            firmMap[p.planning_no] = p.firm;
-          }
-        });
+        if (!planningError && planningData) {
+          planningData.forEach((p: any) => {
+            if (p.planning_no && p.firm) {
+              firmMap[p.planning_no] = p.firm;
+            }
+          });
+        }
       }
+
+      // 4. Merge all data together
+      const transformedData = masterData.map((r: any) => {
+        const poItems = itemMap[r.po_id] || { itemNames: [], qtys: [] };
+        const totalQty = poItems.qtys.reduce((sum: number, q: number) => sum + q, 0);
+
+        return {
+          id: r.id,
+          timestamp: r.created_at,
+          planningNo: r.planning_no,
+          serialNo: r.serial_no,
+          poNO: r.po_id,
+          poDate: r.po_date,
+          quotationNo: r.quotation_no,
+          vendoreName: r.vendor_name,
+          vendorId: r.vendor_id,
+          itemName: poItems.itemNames.join(", ") || r.item_name || "",
+          qty: totalQty || r.qty || "",
+          rate: r.rate,
+          gst: r.gst_percent,
+          discount: r.discount,
+          grandTotalAmount: r.grand_total || r.net_po_amount,
+          poCopy: r.po_copy,
+          projectName: r.project,
+          firmName: firmMap[r.planning_no] || r.firm_name || "",
+          poStatus: r.status || "",
+          poRemarks: r.user_remarks,
+          poSignatureImage: r.upload_file,
+          receivingQuantity: r.receiving_qty,
+          balance: r.balance,
+          receivingStatus: r.receiving_status,
+          planned1: r.planned,
+          delay1: r.delay,
+          paymentStatus: r.payment_status,
+          paymentMode: r.payment_mode,
+          amount: r.net_amount,
+          reason: r.reason,
+          refNo: r.ref_no,
+          pendingAmount: r.pending_amount,
+          deduction: r.deduction,
+          totalPayment: r.total_payment,
+        };
+      });
+
+      setRows(transformedData);
+    } catch (e: any) {
+      setError(e?.message || "Failed to load PO data");
+    } finally {
+      setLoading(false);
     }
-
-    // 4. Merge all data together
-    const transformedData = masterData.map((r: any) => {
-      const poItems = itemMap[r.po_id] || { itemNames: [], qtys: [] };
-      const totalQty = poItems.qtys.reduce((sum: number, q: number) => sum + q, 0);
-
-      return {
-        id: r.id,
-        timestamp: r.created_at,
-        planningNo: r.planning_no,
-        serialNo: r.serial_no,
-        poNO: r.po_id,
-        poDate: r.po_date,
-        quotationNo: r.quotation_no,
-        vendoreName: r.vendor_name,
-        vendorId: r.vendor_id,
-        itemName: poItems.itemNames.join(", ") || r.item_name || "",
-        qty: totalQty || r.qty || "",
-        rate: r.rate,
-        gst: r.gst_percent,
-        discount: r.discount,
-        grandTotalAmount: r.grand_total || r.net_po_amount,
-        poCopy: r.po_copy,
-        projectName: r.project,
-        firmName: firmMap[r.planning_no] || r.firm_name || "",
-        poStatus: r.status || "",
-        poRemarks: r.user_remarks,
-        poSignatureImage: r.upload_file,
-        receivingQuantity: r.receiving_qty,
-        balance: r.balance,
-        receivingStatus: r.receiving_status,
-        planned1: r.planned,
-        delay1: r.delay,
-        paymentStatus: r.payment_status,
-        paymentMode: r.payment_mode,
-        amount: r.net_amount,
-        reason: r.reason,
-        refNo: r.ref_no,
-        pendingAmount: r.pending_amount,
-        deduction: r.deduction,
-        totalPayment: r.total_payment,
-      };
-    });
-
-    setRows(transformedData);
-  } catch (e: any) {
-    setError(e?.message || "Failed to load PO data");
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   useEffect(() => {
     loadRows();
@@ -195,34 +195,34 @@ const loadRows = async () => {
 
   // console.log("filteredData",filteredData);
 
-const getStatusColor = (status: string | null) => {
-  const s = status?.toLowerCase() || "";
+  const getStatusColor = (status: string | null) => {
+    const s = status?.toLowerCase() || "";
 
-  switch (s) {
-    case "approved":
-      return "bg-green-100 text-green-800";
-    case "rejected":
-      return "bg-red-100 text-red-800";
-    case "pending review":
-    case "pending approval":
-      return "bg-yellow-100 text-yellow-800";
-    default:
-      return "bg-gray-100 text-gray-800";
-  }
-};
+    switch (s) {
+      case "approved":
+        return "bg-green-100 text-green-800";
+      case "rejected":
+        return "bg-red-100 text-red-800";
+      case "pending review":
+      case "pending approval":
+        return "bg-yellow-100 text-yellow-800";
+      default:
+        return "bg-gray-100 text-gray-800";
+    }
+  };
 
-const getStatusIcon = (status: string | null) => {
-  const s = status?.toLowerCase() || "";
+  const getStatusIcon = (status: string | null) => {
+    const s = status?.toLowerCase() || "";
 
-  switch (s) {
-    case "approved":
-      return <CheckCircle className="w-4 h-4 text-green-600" />;
-    case "rejected":
-      return <XCircle className="w-4 h-4 text-red-600" />;
-    default:
-      return <Clock className="w-4 h-4 text-yellow-600" />;
-  }
-};
+    switch (s) {
+      case "approved":
+        return <CheckCircle className="w-4 h-4 text-green-600" />;
+      case "rejected":
+        return <XCircle className="w-4 h-4 text-red-600" />;
+      default:
+        return <Clock className="w-4 h-4 text-yellow-600" />;
+    }
+  };
 
   const formatDateTime = (date: any) => {
     // Convert to Date object if it's a timestamp
@@ -237,43 +237,43 @@ const getStatusIcon = (status: string | null) => {
     return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
   };
 
-const uploadFile = async (file: File): Promise<string> => {
+  const uploadFile = async (file: File): Promise<string> => {
 
-  const filePath = `po/${Date.now()}_${file.name}`;   // 👈 IMPORTANT
+    const filePath = `po/${Date.now()}_${file.name}`;   // 👈 IMPORTANT
 
-  const { error } = await supabase.storage
-    .from("po_generator")
-    .upload(filePath, file);
-
-  if (error) throw error;
-
-  const { data } = supabase.storage
-    .from("po_generator")
-    .getPublicUrl(filePath);
-
-  return data.publicUrl;
-};
-
- const updateSheetRow = async (
-  item: any,
-  newStatus: string,
-  fileUrl: string = ""
-) => {
-  try {
-    const { error } = await supabase
-      .from("purchase_order_master")
-      .update({
-        status: newStatus,
-        user_remarks: item.userRemarks || "",
-        upload_file: fileUrl,
-      })
-      .eq("planning_no", item.planningNo);
+    const { error } = await supabase.storage
+      .from("po_generator")
+      .upload(filePath, file);
 
     if (error) throw error;
-  } catch (e) {
-    console.error("Failed to update PO:", e);
-  }
-};
+
+    const { data } = supabase.storage
+      .from("po_generator")
+      .getPublicUrl(filePath);
+
+    return data.publicUrl;
+  };
+
+  const updateSheetRow = async (
+    item: any,
+    newStatus: string,
+    fileUrl: string = ""
+  ) => {
+    try {
+      const { error } = await supabase
+        .from("purchase_order_master")
+        .update({
+          status: newStatus,
+          user_remarks: item.userRemarks || "",
+          upload_file: fileUrl,
+        })
+        .eq("planning_no", item.planningNo);
+
+      if (error) throw error;
+    } catch (e) {
+      console.error("Failed to update PO:", e);
+    }
+  };
 
   const handleApproval = async (id: number, action: "approve" | "reject") => {
     if (submitting[id]) return;
@@ -451,8 +451,8 @@ const uploadFile = async (file: File): Promise<string> => {
             <button
               onClick={() => setActiveTab("pending")}
               className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors duration-200 ${activeTab === "pending"
-                  ? "border-blue-500 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                ? "border-blue-500 text-blue-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
                 }`}
             >
               <div className="flex items-center space-x-2">
@@ -463,8 +463,8 @@ const uploadFile = async (file: File): Promise<string> => {
             <button
               onClick={() => setActiveTab("history")}
               className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors duration-200 ${activeTab === "history"
-                  ? "border-blue-500 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                ? "border-blue-500 text-blue-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
                 }`}
             >
               <div className="flex items-center space-x-2">
@@ -512,9 +512,11 @@ const uploadFile = async (file: File): Promise<string> => {
         </div>
 
         {/* Table */}
-        <div className="overflow-x-auto">
+
+        <div className="overflow-x-auto overflow-y-auto max-h-96">
           <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-50 sticky top-0">
+
               <tr>
                 {activeTab === "pending" && (
                   <th className="px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase">
@@ -602,8 +604,8 @@ const uploadFile = async (file: File): Promise<string> => {
                           onClick={() => handleApproval(item.id, "approve")}
                           disabled={!!submitting[item.id]}
                           className={`p-1 rounded transition-colors duration-200 ${submitting[item.id]
-                              ? "text-green-300 cursor-not-allowed"
-                              : "text-green-600 hover:text-green-900"
+                            ? "text-green-300 cursor-not-allowed"
+                            : "text-green-600 hover:text-green-900"
                             }`}
                           title="Approve"
                         >
@@ -613,8 +615,8 @@ const uploadFile = async (file: File): Promise<string> => {
                           onClick={() => handleApproval(item.id, "reject")}
                           disabled={!!submitting[item.id]}
                           className={`p-1 rounded transition-colors duration-200 ${submitting[item.id]
-                              ? "text-red-300 cursor-not-allowed"
-                              : "text-red-600 hover:text-red-900"
+                            ? "text-red-300 cursor-not-allowed"
+                            : "text-red-600 hover:text-red-900"
                             }`}
                           title="Reject"
                         >

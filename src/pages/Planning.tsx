@@ -519,7 +519,7 @@ const Planning = () => {
             <div className="overflow-hidden bg-white rounded-xl border border-gray-100 shadow-lg">
               <div className="overflow-x-auto overflow-y-auto max-h-96">
                 <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
+                  <thead className="bg-gradient-to-r from-gray-50 sticky top-0 to-gray-100">
                     <tr>
                       {[
                         "Planning No",

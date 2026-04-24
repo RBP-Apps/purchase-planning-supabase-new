@@ -59,8 +59,8 @@ if (pages.includes("all") || pages.map((p: string) => p.toLowerCase()).includes(
       <div className="max-w-md w-full">
         {/* Logo and Title */}
         <div className="text-center mb-8">
-          <div className="mx-auto w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mb-4 shadow-lg">
-            <Building className="h-8 w-8 text-white" />
+          <div className="mx-auto w-32 h-24  flex items-center justify-center mb-4 ">
+            <img src="/Images/Logo.PNG" alt="Logo" />
           </div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">PURCHASE PLANNING</h1>
           <p className="text-gray-600">Sign in to your account</p>
